@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "delirium-spb-website",
+  "private_key_id": "8077196781f0ef4914f16dc5b41e6b52fd444833",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCug0WyWmdxvmKg\nJnJjuxNbs1l8IWPoniV7k6XG+ipA1K+THQ6ihVsEcqpB/atn7JzLC3STewO7Xxt7\n7rDWMwLberCWR2xvMsCY91XNHKpkjpEEdFoSH2TKX4NwPs+5kcqulgcKzTC8x196\nseQ127+EQfwSlusmFYJpw2bLOjc4UmO+vcUNIIlbJvIJQ+T6ZfTU14q/ySkY2pxs\nBReXnxLgQv+M+/p2aw4XE/lNdQEI5NnBbuWtpsLRgfqrS47lUhPIBG4/izMStIIh\n2s1RYSl4nitlrEpjCUovRk0yK1sIyPAZv0OsWke7j5DYsUvRxrbudXzJeSA63edZ\np4WyMb3jAgMBAAECggEAFohgoWzG2orolSEht/rZvwdjUIHHMqvozxH7X7vBZOmR\nWf9wek+ZtvNPRIIKdbq5bAYooTpK+xCGrfPd5Wpkvg4TavQB7kGxWI7nBzriTWWT\nF+4mCxz+mJrIj9+sVpuaffxlIGHqHxXnICKEAuhCzELw1z2hUyOH2Twfs7Hqm1zh\nYYonahL5EAV8E6f4YPs4Jo0PmSakAN9sc1BTYoNyBnh3h7YAfXOV6iibjilB0GV4\n5fxaOzgxikzGQ9PZ4aalWo2mjbEN+hIs7lgkIEpWGqfbfsLWKa/7I/PHCCFIDvTp\naIdnRXdUMNImthTS5dJpfDZ5wR36ZHHS/B4XZIhCcQKBgQDbQrKUZrchsXQYLchJ\nyW+gluSt/XdTYl2nXSj0wUGO6ZpmH5nLrcq8G0Hn57Nb9FdmSvQUb3tZb1iqeRrt\non25vMAL7Wr/kUH7G/FVmK7b0Botmp8zRrh5idhnLZhf5Rio7o+kMGFe4UAxJxOB\nNUnCo9ODdSg3a7aHI+6zWrKDnwKBgQDLwRhKeqeCjtFITnFCOA2158B03TzN7B0T\neFvIPBxlG6xZxRIRJwNTr4HJEd7uLof3Yb+6FQNF+P4n0grxkTqi+kuM/04ilyoS\nWioDWxR+CGsecpTl19GbV7ZLTq8rx2NNuGHJz+AsT+xHi4MErWPdhb+Ac3wQm/WY\nyNboaFP/PQKBgQCSNnUNvz1KC6LmaMlSYzC8P0N5vzeudD8N13LzXFhSa/cZOON/\nToKOVALsGbeij1slDMCdTAZOipDvBVlutFfw3yyWB5m9mWkNggG6WdnpHWoHlT+q\nmvNzoPedPmuJLyX1qThCfjzAX6dF39AC7r0kPclTtXG/G2YZ0l1gXxAB8wKBgEls\n11UXqD/LOa3l3rivPHmd/2Pdyiim+r9mcyTQTKc+9rgO5Xja5z8EEzAjSYPprsO+\nLPpg0iIoHWa6MYll/Yx3yDwSUNT0RowAg/1bmCHm5Ls/LVs6j+V8EUxIGaYcHzQF\nyu+QAsfVMV+C7f8EgOV2alFezImrujCJx7BO0F49AoGAEqyH3K0xYZ4gWTS+xQ+8\nO7DlIVOGEj4Xhnu8jTkZhunjkxeAL3d0JEIIWLFs/KTIJOm2nHwermI/pSTDEd1N\nvfLklEVdGezhjziiCF++KnDkBK5oHGqTuQhUgLR7LgJTMVkm7XjFRxThIi3FzbwD\nZvMT5v1QP130+pfMujk2zx8=\n-----END PRIVATE KEY-----\n",
+  "client_email": "exercise-log-appender@delirium-spb-website.iam.gserviceaccount.com",
+  "client_id": "105236381002932035686",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/exercise-log-appender%40delirium-spb-website.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
