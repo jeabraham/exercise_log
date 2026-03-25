@@ -2,6 +2,7 @@
 #
 # Usage:
 #   make install                              – set up venv and run tests
+#   make install-llm                          – install with Ollama LLM support
 #   make test                                 – run tests
 #   make run    INPUT=path OUTPUT=path        – watch CSV continuously
 #   make run-once INPUT=path OUTPUT=path      – process CSV once and exit
@@ -18,11 +19,11 @@ DELAY     ?= 5
 INPUT     ?=
 OUTPUT    ?=
 
-.PHONY: all install test run run-once clean help
+.PHONY: all install install-llm test run run-once clean help
 
 all: install
 
-## install: create venv, install deps (editable), run tests
+## install: create venv, install deps (editable) including test deps, run tests
 install: $(VENV)/bin/activate
 	@echo "✓ Virtual environment ready.  Run 'make help' for available targets."
 
@@ -32,6 +33,15 @@ $(VENV)/bin/activate: pyproject.toml requirements.txt
 	$(PIP) install -e ".[dev]" --quiet
 	$(MAKE) test
 	@touch $(VENV)/bin/activate
+
+## install-llm: create venv with Ollama LLM support (pyyaml + ollama package)
+install-llm: pyproject.toml requirements.txt
+	python3 -m venv $(VENV)
+	$(VENV)/bin/pip install --upgrade pip --quiet
+	$(VENV)/bin/pip install -e ".[dev,llm]" --quiet
+	$(MAKE) test
+	@touch $(VENV)/bin/activate
+	@echo "✓ Virtual environment ready with LLM support.  Run 'make help' for available targets."
 
 ## test: run the test suite inside the venv
 test: $(VENV)/bin/activate
@@ -68,6 +78,7 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make install"
+	@echo "  make install-llm"
 	@echo "  make run     INPUT=~/workouts.csv OUTPUT=~/parsed.csv"
 	@echo "  make run-once INPUT=~/workouts.csv OUTPUT=~/parsed.csv"
 	@echo "  make run     INPUT=~/workouts.csv OUTPUT=~/parsed.csv DELAY=10"
