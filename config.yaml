@@ -11,6 +11,12 @@
 # The three prompts below are rendered with Python str.format(**vars) where
 # the available variables are noted in each prompt's comment.
 
+sheets:
+  sheet_link: https://docs.google.com/spreadsheets/d/1018gxdlQd_CGn-DidfDmVud2prcNAplomnMokbZrRdE/edit?usp=drivesdk
+  authorization: configuration.json
+  range: RawLog!A:I
+  timestamp: RawLog!A
+
 llm:
   enabled: true
   model: "llama3.1:8b"
