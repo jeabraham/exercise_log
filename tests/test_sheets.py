@@ -31,6 +31,7 @@ import pytest
 from exercise_log.sheets import (
     _extract_spreadsheet_id,
     _resolve_auth_path,
+    _to_sheet_value,
     append_rows_to_sheet,
     load_existing_timestamps,
     process_input_csv_to_sheet,
@@ -230,6 +231,46 @@ class TestLoadExistingTimestampsMocked:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests: _to_sheet_value (numeric conversion)
+# ---------------------------------------------------------------------------
+
+
+class TestToSheetValue:
+    def test_integer_weight_converted(self):
+        assert _to_sheet_value("weight", "20") == 20
+        assert isinstance(_to_sheet_value("weight", "20"), int)
+
+    def test_float_weight_converted(self):
+        assert _to_sheet_value("weight", "27.5") == 27.5
+        assert isinstance(_to_sheet_value("weight", "27.5"), float)
+
+    def test_lb_weight_converted(self):
+        assert _to_sheet_value("lb-weight", "44") == 44
+
+    def test_reps_converted(self):
+        assert _to_sheet_value("reps", "12") == 12
+
+    def test_sets_converted(self):
+        assert _to_sheet_value("sets", "3") == 3
+
+    def test_empty_numeric_field_stays_empty(self):
+        assert _to_sheet_value("weight", "") == ""
+        assert _to_sheet_value("reps", "") == ""
+
+    def test_text_field_unchanged(self):
+        assert _to_sheet_value("exercise", "Bench Press") == "Bench Press"
+        assert _to_sheet_value("timestamp", "2026-01-01T00:00:00Z") == "2026-01-01T00:00:00Z"
+        assert _to_sheet_value("notes", "some note") == "some note"
+
+    def test_numeric_string_in_text_field_stays_string(self):
+        # "original text" should never be coerced to a number
+        assert _to_sheet_value("original text", "30") == "30"
+
+    def test_non_numeric_value_in_numeric_field_stays_string(self):
+        assert _to_sheet_value("weight", "n/a") == "n/a"
+
+
+# ---------------------------------------------------------------------------
 # Unit tests: append_rows_to_sheet (mocked)
 # ---------------------------------------------------------------------------
 
@@ -276,11 +317,11 @@ class TestAppendRowsToSheetMocked:
             [
                 "2026-03-18T12:20:52-06:00",
                 "Romanian Deadlift",
-                "30",
+                30,
                 "lb",
-                "30",
-                "12",
-                "3",
+                30,
+                12,
+                3,
                 "",
                 "Romanian dead lift 30 pounds 3×12",
             ]
