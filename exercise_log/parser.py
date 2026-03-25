@@ -222,7 +222,7 @@ def parse_row(row: List[str]) -> Dict[str, str]:
         weight_val = _parse_number(weight_str)
         if weight_val is not None:
             lb_weight = _to_pounds(weight_val, unit)
-            result["exercise"] = llm_result.get("exercise", original_text)
+            result["exercise"] = llm_result.get("exercise", "")
             result["weight"] = weight_str
             result["units"] = unit
             result["lb-weight"] = _format_weight(lb_weight)
@@ -231,7 +231,18 @@ def parse_row(row: List[str]) -> Dict[str, str]:
             result["notes"] = llm_result.get("notes", "")
             return result
 
-    result["exercise"] = original_text
+    # If LLM provided useful fields, use them; otherwise use original_text
+    if llm_result:
+        result["exercise"] = llm_result.get("exercise", original_text)
+        result["reps"] = llm_result.get("reps", "")
+        result["sets"] = llm_result.get("sets", "")
+        result["notes"] = llm_result.get("notes", "")
+        if not result["weight"]:
+            result["weight"] = llm_result.get("weight", "")
+        if not result["units"]:
+            result["units"] = llm_result.get("units", "")
+    else:
+        result["exercise"] = original_text
     return result
 
 
