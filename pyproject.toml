@@ -16,6 +16,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pyyaml>=6.0",
+]
+llm = [
+    "pyyaml>=6.0",
+    "ollama>=0.4.0",
 ]
 
 [project.scripts]
@@ -23,3 +28,6 @@ exercise-log = "exercise_log.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require a live Ollama server (skipped when unreachable)",
+]

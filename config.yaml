@@ -1,0 +1,88 @@
+# exercise_log – Ollama LLM configuration
+#
+# llm.enabled      – set to false to disable all LLM queries and fall back to
+#                    the pattern-only parser.
+# llm.model        – Ollama model tag to use (e.g. llama3, mistral).
+# llm.base_url     – base URL of the Ollama server.
+# llm.response_format – how the LLM should format its answer: "json" or "csv".
+# llm.max_retries  – how many extra attempts to make when the LLM response
+#                    cannot be parsed (default: 2).
+#
+# The three prompts below are rendered with Python str.format(**vars) where
+# the available variables are noted in each prompt's comment.
+
+llm:
+  enabled: true
+  model: "llama3.1:8b"
+  base_url: "http://192.168.0.247:11434"
+  response_format: "json"   # "json" or "csv"
+  max_retries: 2             # extra attempts when the LLM response cannot be parsed
+
+prompts:
+  # full_log_parse_prompt
+  # Used when the pattern parser CANNOT identify the weight unit or weight
+  # number.  The entire original text is sent to the LLM.
+  #
+  # Available variable: {text}
+  # Expected response fields: exercise, weight, units, reps, sets, notes
+  #   • units must be "lb" or "kg"
+  #   • weight is the numeric weight value as a string (e.g. "27.5")
+  #   • reps, sets, notes may be empty strings when unknown
+  full_log_parse_prompt: |
+    You are a gym fitness personal trainer.  Parse the following gym exercise log entry
+    and return ONLY a {response_format} object with exactly these six fields:
+      exercise – the name of the gym exercise
+      weight   – the numeric weight value (digits only, e.g. "27.5")
+      units    – the weight unit, either "lb" or "kg"
+      reps     – number of repetitions per set (integer string, or "" if unknown)
+      sets     – number of sets (integer string, or "" if unknown)
+      notes    – any additional notes (string, or "" if none)
+    Do not include any explanation or extra text, just the {response_format}.
+    If there is no indication of weight, or no indication of sets, it could be a simple count of reps of an exercise.
+    The text might be garbled due to speech recognition errors, interpret as best you can. 
+
+    Log entry: {text}
+
+  # identify_exercise_prompt
+  # Used when the pattern parser DID successfully identify a weight so we have
+  # a (possibly garbled) exercise name.  The LLM corrects speech-recognition
+  # errors and returns the most likely standard gym exercise name.
+  #
+  # Available variable: {exercise}
+  # Expected response: a single string field "exercise" with the corrected name
+  identify_exercise_prompt: |
+    You are a fitness expert.  The following text is a gym exercise name that
+    may have been garbled by speech recognition.  Return ONLY a {response_format}
+    object with a single field "exercise" containing the most likely correct
+    standard gym exercise name.  Assume dumbbell over barbell or cable, unless
+    the exercise usually uses a cable.  Do not make up exercise names that aren't known in a gym environment.  
+    For example "Facebook" -> Face Pull.  "Gumball pullover" -> Dumbbell Pullover.
+    "Goblin squat" -> Goblet Squat.  Put adjectives first, such as
+    "Bench press inclined" -> Incline Bench Press.  "Pull down lats" -> Lat Pull Down.
+    
+    Do not include any explanation or extra text.
+
+    Input: {exercise}
+
+  # sets_reps_notes_prompt
+  # Used when the pattern parser DID successfully identify a weight.  The
+  # "remainder" text (everything after the weight unit) is sent here to extract
+  # sets, reps, and any notes.
+  #
+  # Available variable: {remainder}
+  # Expected response fields: sets, reps, notes
+  #   • sets and reps are integer strings or "" if unknown
+  #   • notes is a string or "" if none
+  sets_reps_notes_prompt: |
+    You are a fitness log parser and a gym fitness trainer.  The following text is the tail of a gym
+    exercise log entry that comes after the weight.  Extract the number of sets,
+    the number of reps per set, and any free-text notes.  Return ONLY a
+    {response_format} object with exactly these three fields:
+      sets  – number of sets (integer string, or "" if unknown)
+      reps  – number of reps per set (integer string, or "" if unknown)
+      notes – any additional notes (string, or "" if none)
+    Do not include any explanation or extra text, just the {response_format}.
+    Normally sets come before reps, however the user could explicitly put reps before sets, and it's also possible that either sets or reps could be missing.
+    If the user is not explicit, you can use the following to help distinguish sets from reps: Sets are maximum of 5; reps are typically 6 through 18 although in some cases reps could be higher. 
+
+    Text: {remainder}

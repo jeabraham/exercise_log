@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Set
 from word2number import w2n
 
 from exercise_log.config import OUTPUT_FIELDS
+from exercise_log.llm import full_log_parse, identify_exercise, sets_reps_notes
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,12 @@ def parse_row(row: List[str]) -> Dict[str, str]:
             result["weight"] = weight_str
             result["units"] = unit
             result["lb-weight"] = _format_weight(lb_weight)
-            result["notes"] = remainder
+            # LLM: correct exercise name and extract sets/reps/notes
+            result["exercise"] = identify_exercise(exercise)
+            srn = sets_reps_notes(remainder)
+            result["sets"] = srn.get("sets", "")
+            result["reps"] = srn.get("reps", "")
+            result["notes"] = srn.get("notes", "") or remainder
             return result
 
     # --- Attempt 2: word number immediately before unit ---
@@ -199,10 +205,32 @@ def parse_row(row: List[str]) -> Dict[str, str]:
                 result["weight"] = candidate
                 result["units"] = unit
                 result["lb-weight"] = _format_weight(lb_weight)
-                result["notes"] = after_unit
+                # LLM: correct exercise name and extract sets/reps/notes
+                result["exercise"] = identify_exercise(exercise)
+                srn = sets_reps_notes(after_unit)
+                result["sets"] = srn.get("sets", "")
+                result["reps"] = srn.get("reps", "")
+                result["notes"] = srn.get("notes", "") or after_unit
                 return result
 
-    # --- No weight found ---
+    # --- No weight found: fall back to full LLM parse ---
+    llm_result = full_log_parse(original_text)
+    if llm_result.get("weight") and llm_result.get("units"):
+        # LLM successfully identified weight and units.
+        weight_str = llm_result["weight"]
+        unit = _normalize_unit(llm_result["units"])
+        weight_val = _parse_number(weight_str)
+        if weight_val is not None:
+            lb_weight = _to_pounds(weight_val, unit)
+            result["exercise"] = llm_result.get("exercise", original_text)
+            result["weight"] = weight_str
+            result["units"] = unit
+            result["lb-weight"] = _format_weight(lb_weight)
+            result["reps"] = llm_result.get("reps", "")
+            result["sets"] = llm_result.get("sets", "")
+            result["notes"] = llm_result.get("notes", "")
+            return result
+
     result["exercise"] = original_text
     return result
 
