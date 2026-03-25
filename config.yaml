@@ -29,18 +29,60 @@ prompts:
   #   • weight is the numeric weight value as a string (e.g. "27.5")
   #   • reps, sets, notes may be empty strings when unknown
   full_log_parse_prompt: |
-    You are a gym fitness personal trainer.  Parse the following gym exercise log entry
-    and return ONLY a {response_format} object with exactly these six fields:
-      exercise – the name of the gym exercise
-      weight   – the numeric weight value (digits only, e.g. "27.5")
-      units    – the weight unit, either "lb" or "kg"
-      reps     – number of repetitions per set (integer string, or "" if unknown)
-      sets     – number of sets (integer string, or "" if unknown)
-      notes    – any additional notes (string, or "" if none)
-    Do not include any explanation or extra text, just the {response_format}.
-    If there is no indication of weight, or no indication of sets, it could be a simple count of reps of an exercise.
-    The text might be garbled due to speech recognition errors, interpret as best you can. 
-
+    You are parsing noisy speech-to-text gym workout log entries.
+    
+    The input may be incomplete, garbled, misheard, or missing structure.
+    
+    Return ONLY a {response_format} object with exactly these fields:
+    exercise, weight, units, reps, sets, notes
+    
+    Field rules:
+    - exercise: a standard gym exercise name, or "" if no plausible exercise is present
+    - weight: numeric string only, or ""
+    - units: "lb", "kg", or ""
+    - reps: integer string, or ""
+    - sets: integer string, or ""
+    - notes: any leftover text not captured elsewhere, or the full input if no plausible exercise is present
+    
+    General rules:
+    - Extract as much as you can with high confidence.
+    - Prefer empty fields over wrong guesses.
+    - Do not invent weights or reps.
+    - Default units to "lb" only if a weight is clearly present and the unit is implied.
+    - If the input is not clearly a valid exercise entry, set exercise="" and put the full original text in notes.
+    
+    Speech-to-text normalization:
+    - Correct obvious gym-related mishearings when highly confident.
+    - Normalize plural/singular and word order to standard gym naming.
+    - Examples of likely corrections:
+      - "facebook" -> "Face Pull"
+      - "face pole" -> "Face Pull"
+      - "gumball pullover" -> "Dumbbell Pullover"
+      - "goblin squat" -> "Goblet Squat"
+      - "upright road" -> "Upright Row"
+      - "lake press" -> "Leg Press"
+      - "that pulled down" -> "Lat Pulldown"
+      - "single weight hip thrust" -> "Single Leg Hip Thrust"
+    
+    Parsing rules:
+    - "3×10", "3x10", "3 by 10" -> sets=3, reps=10
+    - "three sets of 15" -> sets=3, reps=15
+    - "three sets" -> sets=3
+    - "two sets" -> sets=2
+    - "ten reps" -> reps=10
+    - If text contains a plausible exercise name followed by set/rep information, extract both even if weight is missing.
+    - If text contains only a plausible exercise name, return that exercise and leave other fields empty.
+    
+    Plausibility rules:
+    - A valid exercise should resemble a known gym movement or machine/cable/dumbbell/barbell exercise.
+    - If the text does not resemble a gym exercise, do not force it into exercise.
+    - Example: "Play Christmas Time" is not a gym exercise and should go in notes.
+    
+    Known exercise vocabulary examples:
+    Face Pull, Dumbbell Pullover, Goblet Squat, Romanian Deadlift, Lat Pulldown, Upright Row, Shoulder Press, Dumbbell Shoulder Press, Leg Press, Tricep Pushdown, Incline Bench Press, Step Up, Single Leg Hip Thrust
+    
+    Output must be valid {response_format} and contain no extra text.
+    
     Log entry: {text}
 
   # identify_exercise_prompt
@@ -51,17 +93,35 @@ prompts:
   # Available variable: {exercise}
   # Expected response: a single string field "exercise" with the corrected name
   identify_exercise_prompt: |
-    You are a fitness expert.  The following text is a gym exercise name that
-    may have been garbled by speech recognition.  Return ONLY a {response_format}
-    object with a single field "exercise" containing the most likely correct
-    standard gym exercise name.  Assume dumbbell over barbell or cable, unless
-    the exercise usually uses a cable.  Do not make up exercise names that aren't known in a gym environment.  
-    For example "Facebook" -> Face Pull.  "Gumball pullover" -> Dumbbell Pullover.
-    "Goblin squat" -> Goblet Squat.  Put adjectives first, such as
-    "Bench press inclined" -> Incline Bench Press.  "Pull down lats" -> Lat Pull Down.
+    You normalize gym exercise names from speech-to-text.
+    
+    The input is only an exercise name fragment. The weight and reps have already been parsed separately.
+    
+    Return ONLY a {response_format} object with a single field:
+    - exercise: the most likely standard gym exercise name
+    
+    Rules:
+    - Correct obvious speech-recognition errors only when highly confident.
+    - Normalize to a standard gym exercise name.
+    - Reorder words into standard form when needed.
+    - Do not add extra specificity unless it is strongly implied.
+    - Do not invent exercise names that are not commonly used in a gym.
+    - If the intended exercise is unclear, return the cleaned input text as the exercise name rather than guessing.
+    - Prefer standard capitalization.
+    
+    Normalization examples:
+    - "Facebook" -> "Face Pull"
+    - "Gumball pullover" -> "Dumbbell Pullover"
+    - "Goblin squat" -> "Goblet Squat"
+    - "Bench press inclined" -> "Incline Bench Press"
+    - "Pull down lats" -> "Lat Pulldown"
+    - "Romanian dead lift" -> "Romanian Deadlift"
+    - "Tricep push downs" -> "Tricep Pushdown"
+    - "Step ups" -> "Step Up"
+    - "Upright road" -> "Upright Row"
     
     Do not include any explanation or extra text.
-
+    
     Input: {exercise}
 
   # sets_reps_notes_prompt
