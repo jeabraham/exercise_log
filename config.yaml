@@ -11,8 +11,8 @@
 
 llm:
   enabled: true
-  model: "llama3"
-  base_url: "http://localhost:11434"
+  model: "llama3.1:8b"
+  base_url: "http://192.168.0.247:11434"
   response_format: "json"   # "json" or "csv"
 
 prompts:
@@ -35,6 +35,8 @@ prompts:
       sets     – number of sets (integer string, or "" if unknown)
       notes    – any additional notes (string, or "" if none)
     Do not include any explanation or extra text, just the {response_format}.
+    If there is no indication of weight, or no indication of sets, it could be a simple count of reps of an exercise.
+    The text might be garbled due to speech recognition errors, interpret as best you can. 
 
     Log entry: {text}
 
@@ -49,7 +51,13 @@ prompts:
     You are a fitness expert.  The following text is a gym exercise name that
     may have been garbled by speech recognition.  Return ONLY a {response_format}
     object with a single field "exercise" containing the most likely correct
-    standard gym exercise name.  Do not include any explanation or extra text.
+    standard gym exercise name.  Assume dumbbell over barbell or cable, unlesss
+    the exercise usually uses a cable.  Do not make up new exercise names.  
+    For example "Facebook" -> Face Pull.  "Gumball pullover" -> Dumbbell Pullover.
+    "Goblin squat" -> Goblet Squat.  Put adjectives first, such as
+    "Bench press inclined" -> Incline Bench Press.  "Pull down lats" -> Lat Pull Down.
+    
+    Do not include any explanation or extra text.
 
     Input: {exercise}
 
@@ -71,5 +79,7 @@ prompts:
       reps  – number of reps per set (integer string, or "" if unknown)
       notes – any additional notes (string, or "" if none)
     Do not include any explanation or extra text, just the {response_format}.
+    Normally sets come before reps, however some could be missing.
+    Sets are maximum of 5, and reps are typically 6 to 15 although in some cases reps could be higher. 
 
     Text: {remainder}
