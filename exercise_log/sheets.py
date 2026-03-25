@@ -29,6 +29,30 @@ except ImportError:
     _GOOGLE_LIBS_AVAILABLE = False
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+# Fields that should be stored as numbers, not strings, in the spreadsheet.
+_NUMERIC_FIELDS = {"weight", "lb-weight", "reps", "sets"}
+
+
+def _to_sheet_value(field: str, value: str):
+    """
+    Return *value* as a Python number if *field* is a numeric field and the
+    value can be parsed as one; otherwise return *value* unchanged.
+
+    Sending Python int/float with ``valueInputOption="RAW"`` stores the value
+    as a proper number in Google Sheets instead of a text label.
+    """
+    if field in _NUMERIC_FIELDS and value:
+        try:
+            as_int = int(value)
+            return as_int
+        except ValueError:
+            pass
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    return value
 _INVALID_GRANT_HINT = (
     "\nHint: 'invalid_grant' / 'Invalid JWT Signature' usually means the service "
     "account key has been revoked or rotated.  Download a fresh JSON key from the "
@@ -200,7 +224,7 @@ def append_rows_to_sheet(
     spreadsheet_id = _extract_spreadsheet_id(sheet_link)
     service = _build_service(auth_path)
 
-    values = [[row.get(f, "") for f in fields] for row in rows]
+    values = [[_to_sheet_value(f, row.get(f, "")) for f in fields] for row in rows]
 
     body = {"values": values}
     try:
