@@ -134,13 +134,20 @@ def _ollama_chat(prompt: str) -> Optional[str]:
     model: str = llm_cfg.get("model", "llama3")
     base_url: str = llm_cfg.get("base_url", "http://localhost:11434")
 
+    logger.info(
+        "LLM request  → model=%s  prompt=%r…",
+        model,
+        prompt[:100],
+    )
     try:
         client = ollama.Client(host=base_url)
         response = client.chat(
             model=model,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response["message"]["content"]
+        content: str = response["message"]["content"]
+        logger.info("LLM response ← %r…", content[:120])
+        return content
     except Exception as exc:  # noqa: BLE001
         logger.warning("Ollama request failed: %s", exc)
         return None
