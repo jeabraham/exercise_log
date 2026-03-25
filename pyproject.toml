@@ -17,6 +17,10 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
 ]
+llm = [
+    "pyyaml>=6.0",
+    "ollama>=0.4.0",
+]
 
 [project.scripts]
 exercise-log = "exercise_log.__main__:main"
