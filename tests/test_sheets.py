@@ -43,11 +43,23 @@ from exercise_log.config import load_sheets_config
 # ---------------------------------------------------------------------------
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
-_AUTH_PATH = Path(__file__).parent.parent / "exercise_log" / "configuration.json"
 
+# Resolve the auth file path from config.yaml so that any credentials file
+# named in `authorization:` is used (not just the hardcoded configuration.json).
+def _resolve_sheets_config():
+    """Return the sheets config dict (from config.yaml) or None."""
+    try:
+        from exercise_log.config import load_sheets_config
+        return load_sheets_config(_CONFIG_PATH)
+    except Exception:
+        return None
+
+_LIVE_SHEETS_CONFIG = _resolve_sheets_config()
+
+# For unit tests that don't need real credentials, keep a convenient fixture.
 _SHEET_CONFIG = {
     "sheet_link": "https://docs.google.com/spreadsheets/d/1018gxdlQd_CGn-DidfDmVud2prcNAplomnMokbZrRdE/edit?usp=drivesdk",
-    "authorization": str(_AUTH_PATH),
+    "authorization": str(Path(__file__).parent.parent / "exercise_log" / "configuration.json"),
     "range": "RawLog!A:I",
     "timestamp": "RawLog!A",
 }
@@ -97,7 +109,8 @@ class TestResolveAuthPath:
 
     def test_relative_path_resolved_to_package(self, monkeypatch):
         # The real configuration.json lives next to the package modules.
-        if not _AUTH_PATH.exists():
+        _pkg_auth = Path(__file__).parent.parent / "exercise_log" / "configuration.json"
+        if not _pkg_auth.exists():
             pytest.skip("configuration.json not present in package directory")
         result = _resolve_auth_path("configuration.json")
         assert Path(result).exists()
@@ -115,7 +128,7 @@ class TestLoadSheetsConfig:
         cfg = load_sheets_config(_CONFIG_PATH)
         assert cfg is not None
         assert "docs.google.com/spreadsheets" in cfg["sheet_link"]
-        assert cfg["authorization"] == "configuration.json"
+        assert cfg["authorization"]  # any non-empty path is valid
         assert cfg["range"] == "RawLog!A:I"
         assert cfg["timestamp"] == "RawLog!A"
 
@@ -453,13 +466,20 @@ class TestMainCLI:
 # Integration tests (require live Google Sheets connection)
 # ---------------------------------------------------------------------------
 
-_sheets_available = _CONFIG_PATH.exists() and _AUTH_PATH.exists()
+_sheets_available = (
+    _LIVE_SHEETS_CONFIG is not None
+    and Path(_LIVE_SHEETS_CONFIG["authorization"]).exists()
+)
 
 
 @pytest.mark.sheets_integration
 @pytest.mark.skipif(
     not _sheets_available,
-    reason="config.yaml or configuration.json not found",
+    reason=(
+        "Google Sheets integration not configured: "
+        "ensure config.yaml has a valid 'sheets:' section "
+        "and the 'authorization' key file exists"
+    ),
 )
 class TestSheetsIntegration:
     """
@@ -485,9 +505,7 @@ class TestSheetsIntegration:
 
     def test_load_existing_timestamps_returns_set(self):
         """Reading existing timestamps from the live sheet should succeed."""
-        from exercise_log.config import load_sheets_config
-
-        cfg = load_sheets_config(_CONFIG_PATH)
+        cfg = _LIVE_SHEETS_CONFIG
         assert cfg is not None, "sheets: config not loaded"
 
         timestamps = load_existing_timestamps(
@@ -503,9 +521,7 @@ class TestSheetsIntegration:
         Write a test row to the live sheet and confirm that a second call
         with the same timestamp does NOT append a duplicate.
         """
-        from exercise_log.config import load_sheets_config
-
-        cfg = load_sheets_config(_CONFIG_PATH)
+        cfg = _LIVE_SHEETS_CONFIG
         assert cfg is not None
 
         input_csv = tmp_path / "test_input.csv"

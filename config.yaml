@@ -13,7 +13,7 @@
 
 sheets:
   sheet_link: https://docs.google.com/spreadsheets/d/1018gxdlQd_CGn-DidfDmVud2prcNAplomnMokbZrRdE/edit?usp=drivesdk
-  authorization: configuration.json
+  authorization: configuration.json  # path to service-account JSON key (absolute or relative to repo root)
   range: RawLog!A:I
   timestamp: RawLog!A
 
