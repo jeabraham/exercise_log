@@ -17,6 +17,7 @@ from exercise_log.llm import (
     identify_exercise,
     load_config,
     sets_reps_notes,
+    _call_llm_parsed,
 )
 
 
@@ -118,6 +119,112 @@ class TestParseResponse:
     def test_unparseable_returns_empty_strings(self):
         result = _parse_response("this is not valid", ["sets", "reps"])
         assert result == {"sets": "", "reps": ""}
+
+    # --- Lenient JSON (unquoted string values) ---
+
+    def test_json_unquoted_single_word_value(self):
+        # LLM sometimes forgets to quote simple values.
+        result = _parse_response('{"exercise": Squat}', ["exercise"])
+        assert result["exercise"] == "Squat"
+
+    def test_json_unquoted_multiword_value(self):
+        # The exact failure case reported: pretty-printed JSON, unquoted value.
+        text = '{\n  "exercise": Face Pull\n}'
+        result = _parse_response(text, ["exercise"])
+        assert result["exercise"] == "Face Pull"
+
+    def test_json_mixed_quoted_and_unquoted(self):
+        # Quoted numeric fields alongside an unquoted string field.
+        text = '{"exercise": Dumbbell Pullover, "weight": "35", "units": "lb"}'
+        result = _parse_response(text, ["exercise", "weight", "units"])
+        assert result["exercise"] == "Dumbbell Pullover"
+        assert result["weight"] == "35"
+        assert result["units"] == "lb"
+
+
+# ---------------------------------------------------------------------------
+# _call_llm_parsed – retry logic
+# ---------------------------------------------------------------------------
+
+
+class TestCallLlmParsed:
+    def _cfg_with_prompt(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(
+            "llm:\n  enabled: true\n  model: llama3\n  max_retries: 2\n"
+            "  response_format: json\n"
+            "prompts:\n  identify_exercise_prompt: |\n    ID: {{exercise}}\n",
+            encoding="utf-8",
+        )
+        return cfg_file
+
+    def test_returns_first_good_response(self, tmp_path):
+        """No retry needed when first response parses fine."""
+        _reset_config()
+        load_config(config_path=self._cfg_with_prompt(tmp_path))
+
+        good = json.dumps({"exercise": "bench press"})
+        with patch.object(llm_module, "_ollama_chat", return_value=good) as mock_chat:
+            result = _call_llm_parsed("prompt", ["exercise"], max_retries=2)
+
+        assert result == {"exercise": "bench press"}
+        assert mock_chat.call_count == 1
+
+    def test_retries_on_unparseable_then_succeeds(self, tmp_path):
+        """Should retry and succeed on the second attempt."""
+        _reset_config()
+        load_config(config_path=self._cfg_with_prompt(tmp_path))
+
+        bad = "not parseable at all !!!"
+        good = json.dumps({"exercise": "face pull"})
+        with patch.object(
+            llm_module, "_ollama_chat", side_effect=[bad, good]
+        ) as mock_chat:
+            result = _call_llm_parsed("prompt", ["exercise"], max_retries=2)
+
+        assert result == {"exercise": "face pull"}
+        assert mock_chat.call_count == 2
+
+    def test_gives_up_after_max_retries(self, tmp_path):
+        """Should return all-empty dict after exhausting retries."""
+        _reset_config()
+        load_config(config_path=self._cfg_with_prompt(tmp_path))
+
+        bad = "???"
+        with patch.object(
+            llm_module, "_ollama_chat", return_value=bad
+        ) as mock_chat:
+            result = _call_llm_parsed("prompt", ["exercise"], max_retries=2)
+
+        assert result == {"exercise": ""}
+        # 1 initial attempt + 2 retries = 3 total
+        assert mock_chat.call_count == 3
+
+    def test_returns_none_when_ollama_unavailable(self, tmp_path):
+        """Should return None immediately if Ollama itself is unavailable."""
+        _reset_config()
+        load_config(config_path=self._cfg_with_prompt(tmp_path))
+
+        with patch.object(llm_module, "_ollama_chat", return_value=None) as mock_chat:
+            result = _call_llm_parsed("prompt", ["exercise"], max_retries=2)
+
+        assert result is None
+        assert mock_chat.call_count == 1
+
+    def test_identify_exercise_uses_max_retries_from_config(self, tmp_path):
+        """identify_exercise() picks up max_retries from config.yaml."""
+        _reset_config()
+        load_config(config_path=self._cfg_with_prompt(tmp_path))
+
+        bad = "not valid"
+        good = json.dumps({"exercise": "face pull"})
+        with patch.object(
+            llm_module, "_ollama_chat", side_effect=[bad, good]
+        ) as mock_chat:
+            result = identify_exercise("facebook")
+
+        assert result == "face pull"
+        assert mock_chat.call_count == 2
 
 
 # ---------------------------------------------------------------------------

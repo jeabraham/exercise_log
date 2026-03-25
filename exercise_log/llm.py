@@ -21,8 +21,9 @@ import io
 import json
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
         "model": "llama3",
         "base_url": "http://localhost:11434",
         "response_format": "json",
+        "max_retries": 2,
     },
     "prompts": {
         "full_log_parse_prompt": "",
@@ -157,11 +159,46 @@ def _ollama_chat(prompt: str) -> Optional[str]:
 # Response parsers
 # ---------------------------------------------------------------------------
 
-def _parse_response(text: str, expected_fields: List[str]) -> Dict[str, str]:
+def _lenient_json_extract(text: str, expected_fields: List[str]) -> Dict[str, str]:
     """
-    Try to parse *text* as JSON first, then as CSV, and return a dict
-    containing only the *expected_fields* (with empty strings for missing
-    keys).
+    Regex-based fallback for responses that are *almost* valid JSON but have
+    unquoted string values, e.g. ``"exercise": Face Pull``.
+
+    For each *expected_field* the function tries:
+    1. A properly-quoted value: ``"field": "value"``
+    2. An unquoted value that stops at the next comma, newline, or ``}``.
+    """
+    result: Dict[str, str] = {f: "" for f in expected_fields}
+    for field in expected_fields:
+        # Prefer a properly-quoted value.
+        m = re.search(
+            rf'"{re.escape(field)}"\s*:\s*"([^"]*)"',
+            text,
+            re.IGNORECASE,
+        )
+        if m:
+            result[field] = m.group(1).strip()
+            continue
+        # Fall back to an unquoted value (stop at comma, newline, or closing brace).
+        m = re.search(
+            rf'"{re.escape(field)}"\s*:\s*([^"\n,}}][^,\n}}]*)',
+            text,
+            re.IGNORECASE,
+        )
+        if m:
+            result[field] = m.group(1).strip()
+    return result
+
+
+def _try_parse_response(
+    text: str, expected_fields: List[str]
+) -> Tuple[Dict[str, str], bool]:
+    """
+    Parse *text* and return ``(result_dict, success)``.
+
+    *success* is ``True`` when at least one parser produced a usable result;
+    ``False`` means every parser failed and the caller should consider retrying.
+    Tries in order: standard JSON → CSV → lenient-regex JSON fallback.
     """
     result: Dict[str, str] = {f: "" for f in expected_fields}
 
@@ -184,9 +221,15 @@ def _parse_response(text: str, expected_fields: List[str]) -> Dict[str, str]:
         if isinstance(obj, dict):
             for field in expected_fields:
                 result[field] = str(obj.get(field, "")).strip()
-            return result
+            return result, True
     except (json.JSONDecodeError, ValueError):
         pass
+
+    # --- Lenient regex fallback (handles unquoted JSON string values) ---
+    # Try this before CSV so that JSON-like text is never mis-parsed as CSV.
+    lenient = _lenient_json_extract(json_text, expected_fields)
+    if any(v for v in lenient.values()):
+        return lenient, True
 
     # --- Try CSV ---
     # Expect either a header+data row or a plain data row matching the fields.
@@ -203,17 +246,66 @@ def _parse_response(text: str, expected_fields: List[str]) -> Dict[str, str]:
                     result[field] = values[idx] if idx < len(values) else ""
                 except ValueError:
                     pass
-            return result
-        if len(rows) == 1 and len(rows[0]) == len(expected_fields):
-            # Plain data row, assume same order as expected_fields.
+            return result, True
+        # Plain data row: require multiple fields to avoid treating any
+        # single-word string as a valid single-field response (e.g. any
+        # random text would appear to match the single "exercise" field).
+        # Single-field responses are handled by the JSON/lenient-JSON paths.
+        if (
+            len(rows) == 1
+            and len(rows[0]) == len(expected_fields)
+            and len(expected_fields) > 1
+        ):
             for field, value in zip(expected_fields, rows[0]):
                 result[field] = value.strip()
-            return result
+            return result, True
     except Exception:  # noqa: BLE001
         pass
 
     logger.warning("Could not parse LLM response: %r", text[:200])
+    return result, False
+
+
+def _parse_response(text: str, expected_fields: List[str]) -> Dict[str, str]:
+    """
+    Parse *text* and return a dict of *expected_fields*.  Kept for backward
+    compatibility; prefer ``_try_parse_response`` when the parse-success flag
+    is needed.
+    """
+    result, _ = _try_parse_response(text, expected_fields)
     return result
+
+
+def _call_llm_parsed(
+    prompt: str,
+    expected_fields: List[str],
+    max_retries: int,
+) -> Optional[Dict[str, str]]:
+    """
+    Send *prompt* to the LLM, parse the response, and retry up to
+    *max_retries* additional times whenever parsing fails.
+
+    Returns ``None`` if the LLM is unavailable; otherwise returns the parsed
+    dict (fields may be empty strings if the LLM could not determine them).
+    """
+    for attempt in range(1 + max_retries):
+        if attempt > 0:
+            logger.warning(
+                "LLM response could not be parsed; retrying (attempt %d of %d)…",
+                attempt + 1,
+                1 + max_retries,
+            )
+        raw = _ollama_chat(prompt)
+        if raw is None:
+            return None
+        result, ok = _try_parse_response(raw, expected_fields)
+        if ok:
+            return result
+    logger.warning(
+        "LLM response still unparseable after %d attempt(s); giving up.",
+        1 + max_retries,
+    )
+    return {f: "" for f in expected_fields}
 
 
 # ---------------------------------------------------------------------------
@@ -235,16 +327,16 @@ def full_log_parse(text: str) -> Dict[str, str]:
     """
     cfg = get_config()
     response_format: str = cfg["llm"].get("response_format", "json")
+    max_retries: int = cfg["llm"].get("max_retries", 2)
     template: str = cfg["prompts"].get("full_log_parse_prompt", "")
     if not template:
         return {f: "" for f in _FULL_LOG_FIELDS}
 
     prompt = template.format(text=text, response_format=response_format)
-    raw = _ollama_chat(prompt)
-    if raw is None:
+    result = _call_llm_parsed(prompt, _FULL_LOG_FIELDS, max_retries)
+    if result is None:
         return {f: "" for f in _FULL_LOG_FIELDS}
-
-    return _parse_response(raw, _FULL_LOG_FIELDS)
+    return result
 
 
 def identify_exercise(exercise: str) -> str:
@@ -256,17 +348,16 @@ def identify_exercise(exercise: str) -> str:
     """
     cfg = get_config()
     response_format: str = cfg["llm"].get("response_format", "json")
+    max_retries: int = cfg["llm"].get("max_retries", 2)
     template: str = cfg["prompts"].get("identify_exercise_prompt", "")
     if not template:
         return exercise
 
     prompt = template.format(exercise=exercise, response_format=response_format)
-    raw = _ollama_chat(prompt)
-    if raw is None:
+    result = _call_llm_parsed(prompt, _EXERCISE_FIELDS, max_retries)
+    if result is None:
         return exercise
-
-    parsed = _parse_response(raw, _EXERCISE_FIELDS)
-    return parsed.get("exercise") or exercise
+    return result.get("exercise") or exercise
 
 
 def sets_reps_notes(remainder: str) -> Dict[str, str]:
@@ -278,13 +369,13 @@ def sets_reps_notes(remainder: str) -> Dict[str, str]:
     """
     cfg = get_config()
     response_format: str = cfg["llm"].get("response_format", "json")
+    max_retries: int = cfg["llm"].get("max_retries", 2)
     template: str = cfg["prompts"].get("sets_reps_notes_prompt", "")
     if not template:
         return {f: "" for f in _SETS_REPS_FIELDS}
 
     prompt = template.format(remainder=remainder, response_format=response_format)
-    raw = _ollama_chat(prompt)
-    if raw is None:
+    result = _call_llm_parsed(prompt, _SETS_REPS_FIELDS, max_retries)
+    if result is None:
         return {f: "" for f in _SETS_REPS_FIELDS}
-
-    return _parse_response(raw, _SETS_REPS_FIELDS)
+    return result

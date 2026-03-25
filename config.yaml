@@ -5,6 +5,8 @@
 # llm.model        – Ollama model tag to use (e.g. llama3, mistral).
 # llm.base_url     – base URL of the Ollama server.
 # llm.response_format – how the LLM should format its answer: "json" or "csv".
+# llm.max_retries  – how many extra attempts to make when the LLM response
+#                    cannot be parsed (default: 2).
 #
 # The three prompts below are rendered with Python str.format(**vars) where
 # the available variables are noted in each prompt's comment.
@@ -14,6 +16,7 @@ llm:
   model: "llama3.1:8b"
   base_url: "http://192.168.0.247:11434"
   response_format: "json"   # "json" or "csv"
+  max_retries: 2             # extra attempts when the LLM response cannot be parsed
 
 prompts:
   # full_log_parse_prompt
