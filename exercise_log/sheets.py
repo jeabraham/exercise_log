@@ -193,15 +193,77 @@ def load_existing_timestamps(
     return timestamps
 
 
+def _find_first_empty_row(service, spreadsheet_id: str, timestamp_range: str) -> Optional[int]:
+    """
+    Return the 1-based sheet row number of the first row (after the header)
+    whose timestamp cell is empty, or ``None`` on error.
+
+    Rows returned by ``values.get`` that have an empty/missing first cell are
+    already empty; the row immediately after the last returned row is also
+    empty.  The header (row 1) is always skipped.
+    """
+    try:
+        result = (
+            service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=timestamp_range)
+            .execute()
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+    rows = result.get("values", [])
+    # rows[i] corresponds to sheet row (i+1).  Skip index 0 (header = row 1).
+    for i, row in enumerate(rows):
+        if i == 0:
+            continue  # header row
+        if not row or not str(row[0]).strip():
+            return i + 1  # 1-based
+
+    # All returned rows are non-empty; the next row is the first empty one.
+    return len(rows) + 1
+
+
+def _build_update_range(append_range: str, start_row: int, n_rows: int) -> str:
+    """
+    Build an A1 update range for *n_rows* rows starting at *start_row*.
+
+    Example::
+
+        _build_update_range("RawLog!A:I", 11, 3)  ->  "RawLog!A11:I13"
+    """
+    if "!" in append_range:
+        sheet_name, col_range = append_range.split("!", 1)
+    else:
+        sheet_name, col_range = "", append_range
+
+    if ":" in col_range:
+        left, right = col_range.split(":", 1)
+        start_col = "".join(c for c in left if c.isalpha())
+        end_col = "".join(c for c in right if c.isalpha())
+    else:
+        start_col = end_col = "".join(c for c in col_range if c.isalpha())
+
+    end_row = start_row + n_rows - 1
+    range_str = f"{start_col}{start_row}:{end_col}{end_row}"
+    return f"{sheet_name}!{range_str}" if sheet_name else range_str
+
+
 def append_rows_to_sheet(
     sheet_link: str,
     auth_path: str,
     append_range: str,
     rows: List[Dict[str, str]],
     fields: List[str],
+    timestamp_range: Optional[str] = None,
 ) -> int:
     """
-    Append *rows* to the Google Sheet.
+    Write *rows* to the Google Sheet.
+
+    If *timestamp_range* is supplied the function first reads that column to
+    find the first row whose timestamp is empty and writes the data there
+    (overwriting in place, preserving pre-formatted rows).  Only when no empty
+    row can be determined does it fall back to appending with ``INSERT_ROWS``.
 
     Parameters
     ----------
@@ -215,8 +277,12 @@ def append_rows_to_sheet(
         List of row dicts (keys are field names in *fields* order).
     fields:
         Ordered list of field names that map to sheet columns.
+    timestamp_range:
+        Optional A1 column range used to detect the first empty row
+        (e.g. ``RawLog!A``).  When provided, existing empty rows are
+        overwritten instead of new rows being inserted.
 
-    Returns the number of rows appended.
+    Returns the number of rows written.
     """
     if not rows:
         return 0
@@ -226,21 +292,47 @@ def append_rows_to_sheet(
 
     values = [[_to_sheet_value(f, row.get(f, "")) for f in fields] for row in rows]
 
+    # Prefer overwriting the first empty row rather than inserting new rows.
+    first_empty: Optional[int] = None
+    if timestamp_range:
+        first_empty = _find_first_empty_row(service, spreadsheet_id, timestamp_range)
+
     body = {"values": values}
     try:
-        service.spreadsheets().values().append(
-            spreadsheetId=spreadsheet_id,
-            range=append_range,
-            valueInputOption="RAW",
-            insertDataOption="INSERT_ROWS",
-            body=body,
-        ).execute()
+        if first_empty is not None:
+            update_range = _build_update_range(append_range, first_empty, len(values))
+            service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=update_range,
+                valueInputOption="RAW",
+                body=body,
+            ).execute()
+            logger.debug(
+                "Wrote %d row(s) to Google Sheet %s range %s (overwrite)",
+                len(rows),
+                spreadsheet_id,
+                update_range,
+            )
+        else:
+            service.spreadsheets().values().append(
+                spreadsheetId=spreadsheet_id,
+                range=append_range,
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body=body,
+            ).execute()
+            logger.debug(
+                "Inserted %d new row(s) into Google Sheet %s range %s (insert fallback)",
+                len(rows),
+                spreadsheet_id,
+                append_range,
+            )
     except Exception as exc:  # noqa: BLE001
-        _log_api_error(f"append {len(rows)} row(s) to", spreadsheet_id, exc)
+        _log_api_error(f"write {len(rows)} row(s) to", spreadsheet_id, exc)
         return 0
 
     logger.info(
-        "Appended %d new row(s) to Google Sheet %s range %s",
+        "Wrote %d new row(s) to Google Sheet %s range %s",
         len(rows),
         spreadsheet_id,
         append_range,
@@ -300,5 +392,5 @@ def process_input_csv_to_sheet(
         return 0
 
     return append_rows_to_sheet(
-        sheet_link, auth_path, append_range, new_rows, OUTPUT_FIELDS
+        sheet_link, auth_path, append_range, new_rows, OUTPUT_FIELDS, timestamp_range
     )

@@ -29,7 +29,9 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from exercise_log.sheets import (
+    _build_update_range,
     _extract_spreadsheet_id,
+    _find_first_empty_row,
     _resolve_auth_path,
     _to_sheet_value,
     append_rows_to_sheet,
@@ -131,7 +133,7 @@ class TestLoadSheetsConfig:
         assert "docs.google.com/spreadsheets" in cfg["sheet_link"]
         assert cfg["authorization"]  # any non-empty path is valid
         assert cfg["range"] == "RawLog!A:I"
-        assert cfg["timestamp"] == "RawLog!A"
+        assert cfg["timestamp"] == "RawLog!A:A"
 
     def test_missing_file_returns_none(self, tmp_path):
         cfg = load_sheets_config(tmp_path / "nonexistent.yaml")
@@ -271,13 +273,89 @@ class TestToSheetValue:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests: _build_update_range
+# ---------------------------------------------------------------------------
+
+
+class TestBuildUpdateRange:
+    def test_basic(self):
+        assert _build_update_range("RawLog!A:I", 11, 3) == "RawLog!A11:I13"
+
+    def test_single_row(self):
+        assert _build_update_range("RawLog!A:I", 5, 1) == "RawLog!A5:I5"
+
+    def test_no_sheet_name(self):
+        assert _build_update_range("A:I", 2, 2) == "A2:I3"
+
+    def test_single_column_range(self):
+        assert _build_update_range("Sheet1!A", 3, 2) == "Sheet1!A3:A4"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _find_first_empty_row
+# ---------------------------------------------------------------------------
+
+
+class TestFindFirstEmptyRow:
+    def _make_service(self, values):
+        service = MagicMock()
+        (
+            service.spreadsheets.return_value
+            .values.return_value
+            .get.return_value
+            .execute.return_value
+        ) = {"values": values}
+        return service
+
+    def test_first_data_row_empty(self):
+        # Row 1 header, row 2 empty → first_empty = 2
+        service = self._make_service([["Timestamp"], []])
+        assert _find_first_empty_row(service, "SID", "RawLog!A") == 2
+
+    def test_empty_in_middle(self):
+        # Row 1 header, rows 2-3 data, row 4 empty → first_empty = 4
+        service = self._make_service([
+            ["Timestamp"],
+            ["2026-01-01"],
+            ["2026-01-02"],
+            [],
+        ])
+        assert _find_first_empty_row(service, "SID", "RawLog!A") == 4
+
+    def test_all_rows_filled_returns_next_row(self):
+        # 3 returned rows (header + 2 data) → first_empty = 4
+        service = self._make_service([
+            ["Timestamp"],
+            ["2026-01-01"],
+            ["2026-01-02"],
+        ])
+        assert _find_first_empty_row(service, "SID", "RawLog!A") == 4
+
+    def test_no_rows_returned_returns_1(self):
+        # Completely empty sheet (not even a header returned) → start at row 1.
+        service = self._make_service([])
+        assert _find_first_empty_row(service, "SID", "RawLog!A") == 1
+
+    def test_api_error_returns_none(self):
+        service = MagicMock()
+        (
+            service.spreadsheets.return_value
+            .values.return_value
+            .get.return_value
+            .execute.side_effect
+        ) = Exception("network error")
+        assert _find_first_empty_row(service, "SID", "RawLog!A") is None
+
+
+# ---------------------------------------------------------------------------
 # Unit tests: append_rows_to_sheet (mocked)
 # ---------------------------------------------------------------------------
 
 
 class TestAppendRowsToSheetMocked:
     @patch("exercise_log.sheets._build_service")
-    def test_appends_correct_values(self, mock_build):
+    def test_insert_fallback_when_no_timestamp_range(self, mock_build):
+        """Without timestamp_range, should fall back to append (INSERT_ROWS)."""
         service = MagicMock()
         mock_build.return_value = service
 
@@ -305,7 +383,6 @@ class TestAppendRowsToSheetMocked:
         )
         assert n == 1
 
-        # Verify the API was called with the correct body.
         append_call = service.spreadsheets.return_value.values.return_value.append
         assert append_call.called
         kwargs = append_call.call_args.kwargs
@@ -327,6 +404,73 @@ class TestAppendRowsToSheetMocked:
             ]
         ]
         assert kwargs["body"] == {"values": expected_values}
+
+    # Keep the old name as an alias so no history is lost.
+    test_appends_correct_values = test_insert_fallback_when_no_timestamp_range
+
+    @patch("exercise_log.sheets._build_service")
+    def test_uses_update_when_empty_row_found(self, mock_build):
+        """With timestamp_range, rows should be written via update() to the first empty row."""
+        service = MagicMock()
+        # Simulate timestamp column: header + 2 data rows → first empty = row 4.
+        (
+            service.spreadsheets.return_value
+            .values.return_value
+            .get.return_value
+            .execute.return_value
+        ) = {"values": [["Timestamp"], ["2026-01-01"], ["2026-01-02"]]}
+        mock_build.return_value = service
+
+        from exercise_log.config import OUTPUT_FIELDS
+
+        rows = [{"timestamp": "2026-01-03", "exercise": "Squat", "weight": "100",
+                 "units": "kg", "lb-weight": "220", "reps": "5", "sets": "3",
+                 "notes": "", "original text": "Squat 100 kg 3x5"}]
+        n = append_rows_to_sheet(
+            "https://docs.google.com/spreadsheets/d/SHEET_ID/edit",
+            "/tmp/key.json",
+            "RawLog!A:I",
+            rows,
+            OUTPUT_FIELDS,
+            timestamp_range="RawLog!A",
+        )
+        assert n == 1
+
+        update_call = service.spreadsheets.return_value.values.return_value.update
+        assert update_call.called
+        kwargs = update_call.call_args.kwargs
+        assert kwargs["range"] == "RawLog!A4:I4"
+        assert kwargs["valueInputOption"] == "RAW"
+        # append() should NOT have been called
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        assert not append_call.called
+
+    @patch("exercise_log.sheets._build_service")
+    def test_insert_fallback_when_empty_row_detection_fails(self, mock_build):
+        """If _find_first_empty_row returns None (API error), fall back to append."""
+        service = MagicMock()
+        # Make the get() call (used by _find_first_empty_row) raise an exception.
+        (
+            service.spreadsheets.return_value
+            .values.return_value
+            .get.return_value
+            .execute.side_effect
+        ) = Exception("network error")
+        mock_build.return_value = service
+
+        from exercise_log.config import OUTPUT_FIELDS
+
+        n = append_rows_to_sheet(
+            "https://docs.google.com/spreadsheets/d/SHEET_ID/edit",
+            "/tmp/key.json",
+            "RawLog!A:I",
+            [{"timestamp": "ts1"}],
+            OUTPUT_FIELDS,
+            timestamp_range="RawLog!A",
+        )
+        assert n == 1
+        append_call = service.spreadsheets.return_value.values.return_value.append
+        assert append_call.called
 
     @patch("exercise_log.sheets._build_service")
     def test_empty_rows_returns_zero(self, mock_build):
@@ -401,6 +545,9 @@ class TestProcessInputCsvToSheetMocked:
         n = process_input_csv_to_sheet(input_csv, cfg)
         assert n == 2
         assert mock_append.called
+        # Verify timestamp_range is passed so the overwrite path can be used.
+        call_args = mock_append.call_args
+        assert call_args.args[5] == "RawLog!A"
 
     @patch("exercise_log.sheets.append_rows_to_sheet")
     @patch("exercise_log.sheets.load_existing_timestamps")
