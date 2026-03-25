@@ -1,8 +1,30 @@
 # exercise_log
 
-Works with a Siri shortcut to build a structured log of gym exercises.  The Siri shortcut appends speech-to-text entries (timestamp + free-text description) to a cloud CSV file.  This tool watches that file, parses each new row to extract exercise name, weight, and unit, converts everything to pounds, and writes the results to a structured output CSV.
+Works with a Siri shortcut to build a structured log of gym exercises.  The Siri shortcut prompts you for "Exercise, weight, reps?", prepends the current timestamp, and appends the result as a new line to `Weightlifting_queue.csv` in iCloud (Numbers).  This tool watches that file, parses each new row to extract exercise name, weight, and unit, converts everything to pounds, and writes the results to a structured output CSV.
 
 An optional [Ollama](https://ollama.com) integration corrects garbled speech-recognition text and extracts sets, reps, and notes using a local LLM.
+
+---
+
+## Siri Shortcut
+
+The **Gym Log** shortcut prompts you to say (or type) your exercise details, then appends a timestamped line to `Weightlifting_queue.csv` in iCloud automatically.
+
+**[⬇ Install the Gym Log shortcut](https://www.icloud.com/shortcuts/c118bd928fd54323bc59fca8a6a00cc5)**
+
+![Gym Log shortcut](exercise_log/shortcuts/Gym%20Log%20Shortcut.png)
+
+The shortcut does three things:
+1. **Ask for Text** – prompts *"Exercise, weight, reps?"* (works with Siri dictation or typed input).
+2. **Current Date** – captures the timestamp.
+3. **Append to File** – writes `<timestamp>, <text>` as a new line to `Weightlifting_queue.csv` (in your iCloud Numbers folder).
+
+Point `exercise_log` at that CSV file:
+
+```bash
+make run INPUT=~/Library/Mobile\ Documents/com~apple~Numbers/Documents/Weightlifting_queue.csv \
+         OUTPUT=~/workouts_parsed.csv
+```
 
 ---
 
@@ -177,6 +199,9 @@ exercise_log/
 │   ├── config.py         # defaults (watch delay, output field names)
 │   ├── llm.py            # Ollama LLM integration (optional)
 │   ├── parser.py         # row-level CSV parsing and weight extraction
+│   ├── shortcuts/
+│   │   ├── Gym Log Shortcut.png   # screenshot of the Siri shortcut
+│   │   └── Gym Log.webloc         # iCloud install link
 │   └── watcher.py        # cross-platform file-system monitor (watchdog)
 ├── tests/
 │   ├── test_llm.py       # 20 unit tests for the LLM module (mocked)
