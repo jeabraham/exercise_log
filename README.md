@@ -1,6 +1,6 @@
 # exercise_log
 
-Works with a Siri shortcut to build a structured log of gym exercises.  The Siri shortcut prompts you for "Exercise, weight, reps?", prepends the current timestamp, and appends the result as a new line to `Weightlifting_queue.csv` in iCloud (Numbers).  This tool watches that file, parses each new row to extract exercise name, weight, and unit, converts everything to pounds, and writes the results to a structured output CSV.
+Works with a Siri shortcut to build a structured log of gym exercises.  The Siri shortcut prompts you for "Exercise, weight, reps?", prepends the current timestamp, and appends the result as a new line to `Weightlifting_queue.csv` in iCloud (Numbers).  This tool watches that file, parses each new row to extract exercise name, weight, and unit, converts everything to pounds, and writes the results to a structured output CSV or directly to a Google Sheet.
 
 An optional [Ollama](https://ollama.com) integration corrects garbled speech-recognition text and extracts sets, reps, and notes using a local LLM.
 
@@ -26,6 +26,12 @@ make run INPUT=~/Library/Mobile\ Documents/com~apple~Numbers/Documents/Weightlif
          OUTPUT=~/workouts_parsed.csv
 ```
 
+Or, to write directly to Google Sheets instead of a local CSV:
+
+```bash
+make run-sheets INPUT=~/Library/Mobile\ Documents/com~apple~Numbers/Documents/Weightlifting_queue.csv
+```
+
 ---
 
 ## Requirements
@@ -33,6 +39,7 @@ make run INPUT=~/Library/Mobile\ Documents/com~apple~Numbers/Documents/Weightlif
 * Python 3.9 or later
 * `make` (standard on macOS and Linux; on Windows use [Git Bash](https://git-scm.com) or [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
 * *(Optional)* [Ollama](https://ollama.com) running locally for LLM-assisted parsing
+* *(Optional)* A Google service-account key for Google Sheets output
 
 ---
 
@@ -78,15 +85,62 @@ ollama pull llama3
 
 ---
 
+## Google Sheets output (optional)
+
+Instead of writing to a local CSV file, `exercise_log` can append new rows directly to a Google Sheet.
+
+### 1. Create a service account
+
+1. Open the [Google Cloud Console](https://console.cloud.google.com/).
+2. Go to **IAM & Admin → Service Accounts** and create a new service account.
+3. On the **Keys** tab, click **Add Key → Create new key → JSON** and download the file.
+4. Save the downloaded JSON key file somewhere accessible (e.g. `configuration.json` next to `config.yaml`).
+
+### 2. Share the spreadsheet
+
+Open your Google Sheet and share it (as **Editor**) with the service-account email shown in the JSON file (the `client_email` field).
+
+### 3. Configure `config.yaml`
+
+Add (or update) the `sheets:` section:
+
+```yaml
+sheets:
+  sheet_link: https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>/edit
+  authorization: configuration.json   # relative to repo root or absolute path
+  range: RawLog!A:I                   # target range to append rows
+  timestamp: RawLog!A                 # column used for deduplication
+```
+
+### 4. Install Sheets dependencies and run
+
+```bash
+make install-sheets
+
+# Watch continuously (Ctrl-C to stop)
+make run-sheets INPUT=~/path/to/workouts.csv
+
+# One-shot import
+make run-once-sheets INPUT=~/path/to/workouts.csv
+```
+
+> **Key revoked?**  If you see `invalid_grant: Invalid JWT Signature`, the service-account key in your JSON file has been revoked or rotated.  Generate a new key in the Cloud Console (**IAM & Admin → Service Accounts → Keys**) and replace the file referenced by `authorization` in `config.yaml`.
+
+---
+
 ## All Makefile targets
 
 | Target | Description |
 |--------|-------------|
 | `make install` | Create `.venv`, install all deps (including test deps), run tests |
 | `make install-llm` | Like `install` but also installs Ollama client for LLM support |
+| `make install-sheets` | Like `install` but also installs Google API client for Sheets output |
 | `make test` | Run the test suite inside the venv |
+| `make test-sheets` | Run the Google Sheets integration tests (requires live credentials) |
 | `make run INPUT=… OUTPUT=…` | Watch the input CSV continuously (Ctrl-C to stop) |
 | `make run-once INPUT=… OUTPUT=…` | Process the input CSV once and exit |
+| `make run-sheets INPUT=…` | Watch and append to Google Sheet continuously (Ctrl-C to stop) |
+| `make run-once-sheets INPUT=…` | Process once and append to Google Sheet, then exit |
 | `make clean` | Remove `.venv` and cached Python files |
 | `make help` | Print a short help message |
 
@@ -127,6 +181,8 @@ Example rows (some will fail to parse – that is expected):
 | `sets` | Number of sets (filled by LLM when enabled) |
 | `notes` | Free-text notes after the weight (filled by LLM when enabled) |
 | `original text` | The full free-text description, unmodified |
+
+These same fields (in this order) are used as the columns when writing to Google Sheets.
 
 ---
 
@@ -177,14 +233,40 @@ pip install -e ".[dev]"
 # With LLM support
 pip install -e ".[dev,llm]"
 
-# Watch continuously
+# With Google Sheets support
+pip install -e ".[dev,sheets]"
+
+# Watch continuously – write to a local CSV
 python -m exercise_log --input workouts.csv --output parsed.csv
 
-# One-shot import
+# Watch continuously – write to Google Sheets (sheets: must be set in config.yaml)
+python -m exercise_log --input workouts.csv
+
+# One-shot import to CSV
 python -m exercise_log --input workouts.csv --output parsed.csv --once
+
+# One-shot import to Google Sheets
+python -m exercise_log --input workouts.csv --once
 
 # Extra options
 python -m exercise_log --help
+```
+
+### Running the tests
+
+```bash
+# All unit tests (no live services required)
+pytest tests/
+
+# Or via make
+make test
+
+# Google Sheets integration tests (requires valid credentials in config.yaml)
+pytest tests/test_sheets.py -m sheets_integration
+make test-sheets
+
+# Run test_sheets.py directly (also works)
+python tests/test_sheets.py
 ```
 
 ---
@@ -194,19 +276,22 @@ python -m exercise_log --help
 ```
 exercise_log/
 ├── exercise_log/
-│   ├── __init__.py       # package marker
-│   ├── __main__.py       # CLI entry point
-│   ├── config.py         # defaults (watch delay, output field names)
-│   ├── llm.py            # Ollama LLM integration (optional)
-│   ├── parser.py         # row-level CSV parsing and weight extraction
+│   ├── __init__.py          # package marker
+│   ├── __main__.py          # CLI entry point
+│   ├── config.py            # defaults and config.yaml loader
+│   ├── configuration.json   # service-account key (for testing)
+│   ├── llm.py               # Ollama LLM integration (optional)
+│   ├── parser.py            # row-level CSV parsing and weight extraction
+│   ├── sheets.py            # Google Sheets output (optional)
 │   ├── shortcuts/
 │   │   ├── Gym Log Shortcut.png   # screenshot of the Siri shortcut
 │   │   └── Gym Log.webloc         # iCloud install link
-│   └── watcher.py        # cross-platform file-system monitor (watchdog)
+│   └── watcher.py           # cross-platform file-system monitor (watchdog)
 ├── tests/
-│   ├── test_llm.py       # 20 unit tests for the LLM module (mocked)
-│   └── test_parser.py    # 45 unit and integration tests
-├── config.yaml           # LLM prompts and settings
+│   ├── test_llm.py          # unit tests for the LLM module (mocked)
+│   ├── test_parser.py       # unit and integration tests for the parser
+│   └── test_sheets.py       # unit tests for Sheets integration (mocked)
+├── config.yaml              # LLM prompts, settings, and Sheets config
 ├── pyproject.toml
 ├── requirements.txt
 ├── Makefile
@@ -224,3 +309,4 @@ exercise_log/
 | `£` | lb (Siri sometimes hears "pounds" as "£") |
 
 Numeric values may be integers (`22`), decimals (`22.5`), mixed fractions (`27 1/2`), or word numbers (`twenty`, `eighty seven`).
+

@@ -6,12 +6,14 @@ Windows (watchdog selects the best available backend automatically).
 
 When the watched file is modified the handler waits *watch_delay* seconds
 (to let cloud-sync tools finish writing) and then calls
-``parser.process_input_csv``.
+``parser.process_input_csv`` (CSV output) or
+``sheets.process_input_csv_to_sheet`` (Google Sheets output).
 """
 
 import logging
 import time
 from pathlib import Path
+from typing import Dict, Optional
 
 from watchdog.events import FileModifiedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -27,13 +29,15 @@ class _CsvChangeHandler(FileSystemEventHandler):
     def __init__(
         self,
         input_path: Path,
-        output_path: Path,
+        output_path: Optional[Path],
         watch_delay: float,
+        sheet_config: Optional[Dict] = None,
     ) -> None:
         super().__init__()
         self._input_path = input_path.resolve()
         self._output_path = output_path
         self._watch_delay = watch_delay
+        self._sheet_config = sheet_config
 
     def on_modified(self, event: FileModifiedEvent) -> None:  # type: ignore[override]
         if event.is_directory:
@@ -46,13 +50,19 @@ class _CsvChangeHandler(FileSystemEventHandler):
             self._watch_delay,
         )
         time.sleep(self._watch_delay)
-        process_input_csv(self._input_path, self._output_path)
+        if self._sheet_config is not None:
+            from exercise_log.sheets import process_input_csv_to_sheet
+
+            process_input_csv_to_sheet(self._input_path, self._sheet_config)
+        else:
+            process_input_csv(self._input_path, self._output_path)
 
 
 def watch(
     input_path: Path,
-    output_path: Path,
+    output_path: Optional[Path],
     watch_delay: float,
+    sheet_config: Optional[Dict] = None,
 ) -> None:
     """
     Block and watch *input_path* for modifications indefinitely.
@@ -63,11 +73,17 @@ def watch(
         Path to the input CSV file produced by the Siri shortcut.
     output_path:
         Path to the output CSV file where parsed rows are appended.
+        Must be provided when *sheet_config* is ``None``.
     watch_delay:
         Seconds to wait after a file-change event before reading the file.
+    sheet_config:
+        Optional dict with Google Sheets configuration (from config.yaml
+        ``sheets:`` section).  When provided, rows are appended to the
+        sheet instead of *output_path*.
     """
     input_path = Path(input_path).resolve()
-    output_path = Path(output_path)
+    if output_path is not None:
+        output_path = Path(output_path)
 
     if not input_path.exists():
         logger.warning(
@@ -79,9 +95,14 @@ def watch(
     # before we start watching for changes.
     logger.info("Running initial scan of %s …", input_path)
     if input_path.exists():
-        process_input_csv(input_path, output_path)
+        if sheet_config is not None:
+            from exercise_log.sheets import process_input_csv_to_sheet
 
-    handler = _CsvChangeHandler(input_path, output_path, watch_delay)
+            process_input_csv_to_sheet(input_path, sheet_config)
+        else:
+            process_input_csv(input_path, output_path)
+
+    handler = _CsvChangeHandler(input_path, output_path, watch_delay, sheet_config)
     observer = Observer()
     observer.schedule(handler, str(input_path.parent), recursive=False)
     observer.start()

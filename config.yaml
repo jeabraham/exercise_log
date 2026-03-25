@@ -13,9 +13,9 @@
 
 sheets:
   sheet_link: https://docs.google.com/spreadsheets/d/1018gxdlQd_CGn-DidfDmVud2prcNAplomnMokbZrRdE/edit?usp=drivesdk
-  authorization: configuration.json
+  authorization: secrets/delirium-spb-website-5557fd06da72.json
   range: RawLog!A:I
-  timestamp: RawLog!A
+  timestamp: RawLog!A:A
 
 llm:
   enabled: true
