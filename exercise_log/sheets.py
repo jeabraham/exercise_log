@@ -29,6 +29,32 @@ except ImportError:
     _GOOGLE_LIBS_AVAILABLE = False
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+_INVALID_GRANT_HINT = (
+    "\nHint: 'invalid_grant' / 'Invalid JWT Signature' usually means the service "
+    "account key has been revoked or rotated.  Download a fresh JSON key from the "
+    "Google Cloud Console (IAM & Admin → Service Accounts → Keys) and update the "
+    "'authorization' path in config.yaml."
+)
+
+
+def _log_api_error(operation: str, spreadsheet_id: str, exc: Exception) -> None:
+    """Log a Google API error with an actionable hint when it looks like an auth failure."""
+    msg = str(exc)
+    if "invalid_grant" in msg or "Invalid JWT" in msg or "invalid_client" in msg:
+        logger.error(
+            "Authentication failed while trying to %s Google Sheet %s: %s%s",
+            operation,
+            spreadsheet_id,
+            exc,
+            _INVALID_GRANT_HINT,
+        )
+    else:
+        logger.warning(
+            "Could not %s Google Sheet %s: %s",
+            operation,
+            spreadsheet_id,
+            exc,
+        )
 
 
 def _extract_spreadsheet_id(sheet_link: str) -> str:
@@ -74,10 +100,24 @@ def _build_service(auth_path: str):
     if not _GOOGLE_LIBS_AVAILABLE:
         raise ImportError(
             "Google API libraries are not installed. "
-            "Install them with: pip install google-api-python-client google-auth"
+            "Install them with: pip install -e '.[sheets]'"
         )
     resolved = _resolve_auth_path(auth_path)
-    creds = Credentials.from_service_account_file(resolved, scopes=_SCOPES)
+    if not Path(resolved).exists():
+        raise FileNotFoundError(
+            f"Service account key file not found: {resolved!r}\n"
+            "Ensure 'authorization' in config.yaml points to a valid "
+            "service-account JSON key file."
+        )
+    try:
+        creds = Credentials.from_service_account_file(resolved, scopes=_SCOPES)
+    except Exception as exc:
+        raise ValueError(
+            f"Failed to load service account credentials from {resolved!r}: {exc}\n"
+            "If you see 'Invalid JWT Signature', the key may have been revoked "
+            "or rotated.  Download a fresh key from the Google Cloud Console "
+            "(IAM & Admin → Service Accounts) and update the authorization file."
+        ) from exc
     return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
 
@@ -110,11 +150,7 @@ def load_existing_timestamps(
             .execute()
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Could not read timestamps from Google Sheet %s: %s",
-            spreadsheet_id,
-            exc,
-        )
+        _log_api_error("read timestamps from", spreadsheet_id, exc)
         return set()
 
     rows = result.get("values", [])
@@ -176,12 +212,7 @@ def append_rows_to_sheet(
             body=body,
         ).execute()
     except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "Failed to append %d row(s) to Google Sheet %s: %s",
-            len(rows),
-            spreadsheet_id,
-            exc,
-        )
+        _log_api_error(f"append {len(rows)} row(s) to", spreadsheet_id, exc)
         return 0
 
     logger.info(

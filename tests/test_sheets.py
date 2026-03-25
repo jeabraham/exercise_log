@@ -5,6 +5,17 @@ exercise_log.config and exercise_log.__main__.
 Unit tests use mocking to avoid requiring a live Google Sheets connection.
 Integration tests (marked with ``sheets_integration``) write to and read
 from the real sheet configured in config.yaml / configuration.json.
+
+Running
+-------
+    # All tests (unit only, skipping integration):
+    pytest tests/test_sheets.py
+
+    # Unit + live integration tests (requires Google Sheets credentials):
+    pytest tests/test_sheets.py -m sheets_integration
+
+    # Or run this file directly:
+    python tests/test_sheets.py
 """
 
 import csv
@@ -511,3 +522,10 @@ class TestSheetsIntegration:
         # Second call – the timestamp is already in the sheet; should append 0.
         n2 = process_input_csv_to_sheet(input_csv, cfg)
         assert n2 == 0, f"Expected 0 rows on second call (dedup), got {n2}"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main([__file__, "-v"]))
