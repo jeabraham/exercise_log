@@ -29,7 +29,7 @@ prompts:
   #   • weight is the numeric weight value as a string (e.g. "27.5")
   #   • reps, sets, notes may be empty strings when unknown
   full_log_parse_prompt: |
-    You are a fitness log parser.  Parse the following gym exercise log entry
+    You are a gym fitness personal trainer.  Parse the following gym exercise log entry
     and return ONLY a {response_format} object with exactly these six fields:
       exercise – the name of the gym exercise
       weight   – the numeric weight value (digits only, e.g. "27.5")
@@ -54,8 +54,8 @@ prompts:
     You are a fitness expert.  The following text is a gym exercise name that
     may have been garbled by speech recognition.  Return ONLY a {response_format}
     object with a single field "exercise" containing the most likely correct
-    standard gym exercise name.  Assume dumbbell over barbell or cable, unlesss
-    the exercise usually uses a cable.  Do not make up new exercise names.  
+    standard gym exercise name.  Assume dumbbell over barbell or cable, unless
+    the exercise usually uses a cable.  Do not make up exercise names that aren't known in a gym environment.  
     For example "Facebook" -> Face Pull.  "Gumball pullover" -> Dumbbell Pullover.
     "Goblin squat" -> Goblet Squat.  Put adjectives first, such as
     "Bench press inclined" -> Incline Bench Press.  "Pull down lats" -> Lat Pull Down.
@@ -74,7 +74,7 @@ prompts:
   #   • sets and reps are integer strings or "" if unknown
   #   • notes is a string or "" if none
   sets_reps_notes_prompt: |
-    You are a fitness log parser.  The following text is the tail of a gym
+    You are a fitness log parser and a gym fitness trainer.  The following text is the tail of a gym
     exercise log entry that comes after the weight.  Extract the number of sets,
     the number of reps per set, and any free-text notes.  Return ONLY a
     {response_format} object with exactly these three fields:
@@ -82,7 +82,7 @@ prompts:
       reps  – number of reps per set (integer string, or "" if unknown)
       notes – any additional notes (string, or "" if none)
     Do not include any explanation or extra text, just the {response_format}.
-    Normally sets come before reps, however some could be missing.
-    Sets are maximum of 5, and reps are typically 6 to 15 although in some cases reps could be higher. 
+    Normally sets come before reps, however the user could explicitly put reps before sets, and it's also possible that either sets or reps could be missing.
+    If the user is not explicit, you can use the following to help distinguish sets from reps: Sets are maximum of 5; reps are typically 6 through 18 although in some cases reps could be higher. 
 
     Text: {remainder}
