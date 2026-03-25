@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exercise_log"
+version = "0.1.0"
+description = "Watches a CSV file for exercise log entries from a Siri shortcut and parses them."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "watchdog>=6.0.0",
+    "word2number>=1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+exercise-log = "exercise_log.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
