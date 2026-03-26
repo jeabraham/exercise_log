@@ -8,6 +8,8 @@ Usage
     python -m exercise_log --input workouts.csv --output parsed.csv --delay 10
     python -m exercise_log --input workouts.csv --output parsed.csv --once
     python -m exercise_log --input workouts.csv --once
+    python -m exercise_log --input-url https://example.com/workouts.csv --output parsed.csv
+    python -m exercise_log --output parsed.csv  (uses input_url from config.yaml)
     (when no --output is given and config.yaml defines a sheets: section,
      new rows are appended to the configured Google Sheet)
 """
@@ -17,7 +19,12 @@ import logging
 import sys
 from pathlib import Path
 
-from exercise_log.config import DEFAULT_WATCH_DELAY, load_sheets_config
+from exercise_log.config import (
+    DEFAULT_URL_POLL_INTERVAL,
+    DEFAULT_WATCH_DELAY,
+    load_input_url,
+    load_sheets_config,
+)
 from exercise_log.parser import process_input_csv
 from exercise_log.watcher import watch
 
@@ -30,11 +37,24 @@ def _build_parser() -> argparse.ArgumentParser:
             "parse them into a structured output CSV or Google Sheet."
         ),
     )
-    p.add_argument(
+    input_group = p.add_mutually_exclusive_group()
+    input_group.add_argument(
         "--input",
-        required=True,
+        required=False,
+        default=None,
         metavar="PATH",
         help="Path to the input CSV file (written by the Siri shortcut).",
+    )
+    input_group.add_argument(
+        "--input-url",
+        required=False,
+        default=None,
+        metavar="URL",
+        help=(
+            "HTTP/HTTPS URL of the input CSV file to poll for changes "
+            "(e.g. a Dropbox shared link).  Takes precedence over "
+            "input_url in config.yaml."
+        ),
     )
     p.add_argument(
         "--output",
@@ -55,6 +75,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             f"Seconds to wait after a file-change event before reading the "
             f"input file (default: {DEFAULT_WATCH_DELAY})."
+        ),
+    )
+    p.add_argument(
+        "--url-poll-interval",
+        type=float,
+        default=DEFAULT_URL_POLL_INTERVAL,
+        metavar="SECONDS",
+        help=(
+            f"Seconds between URL polls when using --input-url or "
+            f"input_url from config.yaml (default: {DEFAULT_URL_POLL_INTERVAL})."
         ),
     )
     p.add_argument(
@@ -82,9 +112,27 @@ def main(argv: list[str] | None = None) -> int:
         datefmt="%H:%M:%S",
     )
 
-    input_path = Path(args.input)
+    # ------------------------------------------------------------------
+    # Resolve input source: --input (file), --input-url, or config.yaml
+    # ------------------------------------------------------------------
+    input_url: str | None = args.input_url
+    if input_url is None and args.input is None:
+        # Neither flag given – try to load URL from config.yaml
+        input_url = load_input_url()
 
-    # Determine output destination.
+    use_url = input_url is not None
+    input_path = Path(args.input) if args.input is not None else None
+
+    if not use_url and input_path is None:
+        logging.error(
+            "No input source specified.  Provide --input PATH, --input-url URL, "
+            "or set input_url in config.yaml."
+        )
+        return 1
+
+    # ------------------------------------------------------------------
+    # Determine output destination
+    # ------------------------------------------------------------------
     if args.output is not None:
         output_path = Path(args.output)
         use_sheets = False
@@ -100,8 +148,36 @@ def main(argv: list[str] | None = None) -> int:
         use_sheets = True
         output_path = None  # type: ignore[assignment]
 
+    # ------------------------------------------------------------------
+    # URL-based workflow
+    # ------------------------------------------------------------------
+    if use_url:
+        if args.once:
+            from exercise_log.url_watcher import _fetch_url, _process_content
+
+            content = _fetch_url(input_url)  # type: ignore[arg-type]
+            if content is None:
+                logging.error("Could not fetch URL: %s", input_url)
+                return 1
+            _process_content(content, output_path, sheet_config if use_sheets else None)
+            print(f"Processed URL content from {input_url}.")
+            return 0
+
+        from exercise_log.url_watcher import watch_url
+
+        watch_url(
+            input_url,  # type: ignore[arg-type]
+            output_path,
+            poll_interval=args.url_poll_interval,
+            sheet_config=sheet_config if use_sheets else None,
+        )
+        return 0
+
+    # ------------------------------------------------------------------
+    # File-based workflow (original behaviour)
+    # ------------------------------------------------------------------
     if args.once:
-        if not input_path.exists():
+        if not input_path.exists():  # type: ignore[union-attr]
             logging.error("Input file not found: %s", input_path)
             return 1
         if use_sheets:
@@ -114,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Wrote {n} new row(s) to {output_path}.")
         return 0
 
-    watch(input_path, output_path, args.delay, sheet_config=sheet_config)
+    watch(input_path, output_path, args.delay, sheet_config=sheet_config if use_sheets else None)
     return 0
 
 
