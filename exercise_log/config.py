@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 # the input CSV.  A short delay lets cloud-sync tools finish writing.
 DEFAULT_WATCH_DELAY: float = 5.0
 
+# Number of seconds between consecutive URL polls.
+DEFAULT_URL_POLL_INTERVAL: float = 60.0
+
 # CSV field names used in the output file.
 OUTPUT_FIELDS = [
     "timestamp",
@@ -69,3 +72,73 @@ def load_sheets_config(config_path: Optional[Path] = None) -> Optional[Dict]:
         "range": sheets["range"],
         "timestamp": sheets["timestamp"],
     }
+
+
+def load_input_url(config_path: Optional[Path] = None) -> Optional[str]:
+    """
+    Load the ``input_url:`` field from *config_path* (defaults to
+    ``config.yaml`` in the current working directory).
+
+    Returns the URL string, or ``None`` if the field is absent or the file
+    cannot be read.
+    """
+    if config_path is None:
+        config_path = Path.cwd() / "config.yaml"
+
+    if not config_path.exists():
+        return None
+
+    try:
+        import yaml  # type: ignore[import]
+
+        with config_path.open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load config file %s: %s", config_path, exc)
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    url = data.get("input_url")
+    if not url:
+        return None
+
+    return str(url)
+
+
+def load_url_poll_interval(config_path: Optional[Path] = None) -> Optional[float]:
+    """
+    Load the ``url_poll_interval:`` field from *config_path* (defaults to
+    ``config.yaml`` in the current working directory).
+
+    Returns the interval as a float (seconds), or ``None`` if the field is
+    absent or the file cannot be read.
+    """
+    if config_path is None:
+        config_path = Path.cwd() / "config.yaml"
+
+    if not config_path.exists():
+        return None
+
+    try:
+        import yaml  # type: ignore[import]
+
+        with config_path.open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load config file %s: %s", config_path, exc)
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    value = data.get("url_poll_interval")
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        logger.warning("url_poll_interval in config is not a number: %r", value)
+        return None

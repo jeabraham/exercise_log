@@ -10,6 +10,8 @@
 #   make run-once INPUT=path OUTPUT=path      – process CSV once and exit
 #   make run-sheets INPUT=path                – watch and append to Google Sheet
 #   make run-once-sheets INPUT=path           – process once and append to Google Sheet
+#   make run-url                              – poll URL from config.yaml, write to Sheet (Ctrl-C to stop)
+#   make run-url-once                         – fetch URL from config.yaml once and process, then exit
 #   make clean                                – remove venv and caches
 
 VENV      := .venv
@@ -23,7 +25,7 @@ DELAY     ?= 5
 INPUT     ?=
 OUTPUT    ?=
 
-.PHONY: all install install-llm install-sheets test test-sheets run run-once run-sheets run-once-sheets clean help
+.PHONY: all install install-llm install-sheets test test-sheets run run-once run-sheets run-once-sheets run-url run-url-once clean help
 
 all: install
 
@@ -86,6 +88,14 @@ run-once-sheets: $(VENV)/bin/activate
 	@test -n "$(INPUT)" || (echo "ERROR: specify INPUT=<path/to/workouts.csv>"; exit 1)
 	$(PYTHON) -m exercise_log --input "$(INPUT)" --once
 
+## run-url: poll input_url from config.yaml and write to sheets from config.yaml (Ctrl-C to stop)
+run-url: $(VENV)/bin/activate
+	$(PYTHON) -m exercise_log
+
+## run-url-once: fetch input_url from config.yaml once and process, then exit
+run-url-once: $(VENV)/bin/activate
+	$(PYTHON) -m exercise_log --once
+
 ## clean: remove venv and Python caches
 clean:
 	rm -rf $(VENV) __pycache__ exercise_log/__pycache__ tests/__pycache__ \
@@ -112,4 +122,6 @@ help:
 	@echo "  make run-sheets   INPUT=~/workouts.csv"
 	@echo "  make run-once-sheets INPUT=~/workouts.csv"
 	@echo "  make run          INPUT=~/workouts.csv OUTPUT=~/parsed.csv DELAY=10"
+	@echo "  make run-url                  # uses input_url + url_poll_interval + sheets from config.yaml"
+	@echo "  make run-url-once             # same, but fetches once and exits"
 	@echo ""

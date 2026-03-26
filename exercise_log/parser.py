@@ -233,7 +233,7 @@ def parse_row(row: List[str]) -> Dict[str, str]:
 
     # If LLM provided useful fields, use them; otherwise use original_text
     if llm_result:
-        result["exercise"] = llm_result.get("exercise") or original_text
+        result["exercise"] = llm_result.get("exercise", "")
         result["reps"] = llm_result.get("reps", "")
         result["sets"] = llm_result.get("sets", "")
         result["notes"] = llm_result.get("notes", "")

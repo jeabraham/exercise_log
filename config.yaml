@@ -12,6 +12,7 @@
 # the available variables are noted in each prompt's comment.
 
 input_url: https://dl.dropboxusercontent.com/scl/fi/hwljrtf6ztasjh8dapb35/Weightlifting_queue.csv?rlkey=pxm51w98wxi9ucsl5btkkk8dx&st=o7aivafs
+url_poll_interval: 60
 
 sheets:
   sheet_link: https://docs.google.com/spreadsheets/d/1018gxdlQd_CGn-DidfDmVud2prcNAplomnMokbZrRdE/edit?usp=drivesdk
