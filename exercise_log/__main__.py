@@ -24,6 +24,7 @@ from exercise_log.config import (
     DEFAULT_WATCH_DELAY,
     load_input_url,
     load_sheets_config,
+    load_url_poll_interval,
 )
 from exercise_log.parser import process_input_csv
 from exercise_log.watcher import watch
@@ -80,11 +81,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--url-poll-interval",
         type=float,
-        default=DEFAULT_URL_POLL_INTERVAL,
+        default=None,
         metavar="SECONDS",
         help=(
             f"Seconds between URL polls when using --input-url or "
-            f"input_url from config.yaml (default: {DEFAULT_URL_POLL_INTERVAL})."
+            f"input_url from config.yaml.  Falls back to url_poll_interval "
+            f"in config.yaml, then to the built-in default "
+            f"({DEFAULT_URL_POLL_INTERVAL}s)."
         ),
     )
     p.add_argument(
@@ -130,6 +133,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    # Resolve URL poll interval: CLI flag → config.yaml → built-in default
+    url_poll_interval: float = (
+        args.url_poll_interval
+        if args.url_poll_interval is not None
+        else (load_url_poll_interval() or DEFAULT_URL_POLL_INTERVAL)
+    )
+
     # ------------------------------------------------------------------
     # Determine output destination
     # ------------------------------------------------------------------
@@ -168,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         watch_url(
             input_url,  # type: ignore[arg-type]
             output_path,
-            poll_interval=args.url_poll_interval,
+            poll_interval=url_poll_interval,
             sheet_config=sheet_config if use_sheets else None,
         )
         return 0

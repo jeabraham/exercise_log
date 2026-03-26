@@ -128,6 +128,48 @@ make run-once-sheets INPUT=~/path/to/workouts.csv
 
 ---
 
+## URL polling input (Dropbox / direct link)
+
+iCloud sync is not always reliable for delivering the CSV to your Mac.  As an alternative, the Siri shortcut can write to a Dropbox file and you can point `exercise_log` at the public download URL instead.
+
+### How it works
+
+`exercise_log` polls the URL at a configurable interval (default: 60 s), computes a SHA-256 hash of the response, and only re-processes the file when the content has actually changed.  The downloaded bytes are written to a temporary file, processed, and immediately deleted.
+
+### 1. Configure `config.yaml`
+
+```yaml
+# URL of the input CSV file to poll (e.g. a Dropbox direct-download link)
+input_url: https://dl.dropboxusercontent.com/…/Weightlifting_queue.csv
+
+# How often to poll the URL for changes (seconds)
+url_poll_interval: 60
+
+# Google Sheets output (rows are written here instead of a local CSV)
+sheets:
+  sheet_link: https://docs.google.com/spreadsheets/d/<YOUR_SHEET_ID>/edit
+  authorization: configuration.json
+  range: RawLog!A:I
+  timestamp: RawLog!A
+```
+
+### 2. Install Sheets dependencies and run
+
+```bash
+make install-sheets
+
+# Poll continuously (Ctrl-C to stop) – reads input_url, url_poll_interval,
+# and sheets destination all from config.yaml
+make run-url
+
+# Or fetch once and exit
+make run-url-once
+```
+
+Both targets require no command-line arguments: all configuration comes from `config.yaml`.
+
+---
+
 ## All Makefile targets
 
 | Target | Description |
@@ -141,6 +183,8 @@ make run-once-sheets INPUT=~/path/to/workouts.csv
 | `make run-once INPUT=… OUTPUT=…` | Process the input CSV once and exit |
 | `make run-sheets INPUT=…` | Watch and append to Google Sheet continuously (Ctrl-C to stop) |
 | `make run-once-sheets INPUT=…` | Process once and append to Google Sheet, then exit |
+| `make run-url` | Poll `input_url` from config.yaml and write to Google Sheet (Ctrl-C to stop) |
+| `make run-url-once` | Fetch `input_url` from config.yaml once, process, and exit |
 | `make clean` | Remove `.venv` and cached Python files |
 | `make help` | Print a short help message |
 
@@ -242,11 +286,17 @@ python -m exercise_log --input workouts.csv --output parsed.csv
 # Watch continuously – write to Google Sheets (sheets: must be set in config.yaml)
 python -m exercise_log --input workouts.csv
 
+# Poll URL from config.yaml, write to Google Sheet from config.yaml (Ctrl-C to stop)
+python -m exercise_log
+
 # One-shot import to CSV
 python -m exercise_log --input workouts.csv --output parsed.csv --once
 
 # One-shot import to Google Sheets
 python -m exercise_log --input workouts.csv --once
+
+# Fetch URL from config.yaml once and exit
+python -m exercise_log --once
 
 # Extra options
 python -m exercise_log --help
@@ -286,12 +336,14 @@ exercise_log/
 │   ├── shortcuts/
 │   │   ├── Gym Log Shortcut.png   # screenshot of the Siri shortcut
 │   │   └── Gym Log.webloc         # iCloud install link
+│   ├── url_watcher.py       # URL polling monitor (Dropbox / direct links)
 │   └── watcher.py           # cross-platform file-system monitor (watchdog)
 ├── tests/
 │   ├── test_llm.py          # unit tests for the LLM module (mocked)
 │   ├── test_parser.py       # unit and integration tests for the parser
-│   └── test_sheets.py       # unit tests for Sheets integration (mocked)
-├── config.yaml              # LLM prompts, settings, and Sheets config
+│   ├── test_sheets.py       # unit tests for Sheets integration (mocked)
+│   └── test_url_watcher.py  # unit tests for URL polling watcher
+├── config.yaml              # LLM prompts, settings, Sheets config, and input_url
 ├── pyproject.toml
 ├── requirements.txt
 ├── Makefile

@@ -105,3 +105,40 @@ def load_input_url(config_path: Optional[Path] = None) -> Optional[str]:
         return None
 
     return str(url)
+
+
+def load_url_poll_interval(config_path: Optional[Path] = None) -> Optional[float]:
+    """
+    Load the ``url_poll_interval:`` field from *config_path* (defaults to
+    ``config.yaml`` in the current working directory).
+
+    Returns the interval as a float (seconds), or ``None`` if the field is
+    absent or the file cannot be read.
+    """
+    if config_path is None:
+        config_path = Path.cwd() / "config.yaml"
+
+    if not config_path.exists():
+        return None
+
+    try:
+        import yaml  # type: ignore[import]
+
+        with config_path.open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load config file %s: %s", config_path, exc)
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    value = data.get("url_poll_interval")
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        logger.warning("url_poll_interval in config is not a number: %r", value)
+        return None

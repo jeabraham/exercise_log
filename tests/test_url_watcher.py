@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from exercise_log.url_watcher import _content_hash, _fetch_url, _process_content, watch_url
-from exercise_log.config import load_input_url
+from exercise_log.config import load_input_url, load_url_poll_interval
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +246,41 @@ class TestLoadInputUrl:
 
 
 # ---------------------------------------------------------------------------
+# load_url_poll_interval (config.py)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadUrlPollInterval:
+    def test_returns_interval_from_config(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("url_poll_interval: 120\n")
+        result = load_url_poll_interval(cfg)
+        assert result == 120.0
+
+    def test_returns_float(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("url_poll_interval: 30.5\n")
+        result = load_url_poll_interval(cfg)
+        assert result == pytest.approx(30.5)
+
+    def test_returns_none_when_field_absent(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("input_url: https://example.com/data.csv\n")
+        result = load_url_poll_interval(cfg)
+        assert result is None
+
+    def test_returns_none_when_file_missing(self, tmp_path):
+        result = load_url_poll_interval(tmp_path / "nonexistent.yaml")
+        assert result is None
+
+    def test_returns_none_for_invalid_value(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("url_poll_interval: not_a_number\n")
+        result = load_url_poll_interval(cfg)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
 # __main__.py CLI integration
 # ---------------------------------------------------------------------------
 
@@ -321,3 +356,28 @@ class TestMainCliUrl:
 
         assert rc == 0
         mock_proc.assert_called_once()
+
+    def test_poll_interval_loaded_from_config(self, tmp_path):
+        """url_poll_interval in config.yaml is used when --url-poll-interval not given."""
+        output_path = tmp_path / "out.csv"
+        captured_intervals: list = []
+
+        def fake_watch_url(url, out, poll_interval, sheet_config):
+            captured_intervals.append(poll_interval)
+            # return immediately (don't loop or raise KeyboardInterrupt)
+
+        with patch(
+            "exercise_log.__main__.load_input_url",
+            return_value="http://example.com/file.csv",
+        ), patch(
+            "exercise_log.__main__.load_url_poll_interval",
+            return_value=90.0,
+        ), patch(
+            "exercise_log.url_watcher.watch_url", side_effect=fake_watch_url
+        ):
+            from exercise_log.__main__ import main
+
+            rc = main(["--output", str(output_path)])
+
+        assert rc == 0
+        assert captured_intervals == [90.0]
