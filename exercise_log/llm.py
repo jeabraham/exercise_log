@@ -48,6 +48,9 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 
 _config: Optional[Dict[str, Any]] = None
 
+# Regex for extracting the leading numeric token from a weight string.
+# Handles integers ("100"), decimals ("22.5"), and mixed fractions ("27 1/2").
+_WEIGHT_NUM_RE = re.compile(r"^(\d+(?:\s+\d+/\d+|\.\d+)?)")
 
 def _find_config_path() -> Optional[Path]:
     """Search for config.yaml in common locations."""
@@ -336,6 +339,15 @@ def full_log_parse(text: str) -> Dict[str, str]:
     result = _call_llm_parsed(prompt, _FULL_LOG_FIELDS, max_retries)
     if result is None:
         return {f: "" for f in _FULL_LOG_FIELDS}
+
+    # Normalise weight: the prompt requests a numeric-only string but some
+    # LLMs include a trailing unit (e.g. "100 kg").  Extract the leading
+    # numeric token so callers always receive a pure number.
+    weight_raw = result.get("weight", "").strip()
+    if weight_raw:
+        m = _WEIGHT_NUM_RE.match(weight_raw)
+        result["weight"] = m.group(1) if m else weight_raw
+
     return result
 
 
