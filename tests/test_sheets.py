@@ -22,6 +22,7 @@ import csv
 import io
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Dict, List
 from unittest.mock import MagicMock, call, patch
@@ -708,12 +709,17 @@ class TestSheetsIntegration:
         """
         Write a test row to the live sheet and confirm that a second call
         with the same timestamp does NOT append a duplicate.
+
+        A UUID suffix ensures each test run uses a fresh timestamp so a
+        previously-run test cannot cause a false "0 rows appended" on the
+        first call.  Rows written are identifiable by the ``__TEST__`` prefix
+        for manual clean-up.
         """
         cfg = _LIVE_SHEETS_CONFIG
         assert cfg is not None
 
         input_csv = tmp_path / "test_input.csv"
-        test_ts = "__TEST__2099-01-01T00:00:02Z"
+        test_ts = f"__TEST__2099-01-01T00:00:00Z_{uuid.uuid4()}"
 
         with input_csv.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)

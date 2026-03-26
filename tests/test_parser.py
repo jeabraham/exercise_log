@@ -15,6 +15,7 @@ The goal is to verify:
 import csv
 import io
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -26,6 +27,33 @@ from exercise_log.parser import (
     parse_row,
     process_input_csv,
 )
+
+
+# ---------------------------------------------------------------------------
+# Module-level fixture: isolate parser tests from LLM availability
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _mock_llm(monkeypatch):
+    """Patch LLM helpers so parser tests are independent of Ollama availability.
+
+    * identify_exercise returns its input unchanged (no speech-correction).
+    * full_log_parse returns an empty dict (no weight/units inferred by LLM).
+    * sets_reps_notes returns an empty dict (caller falls back to raw remainder).
+    """
+    monkeypatch.setattr(
+        "exercise_log.parser.identify_exercise",
+        Mock(side_effect=lambda x: x),
+    )
+    monkeypatch.setattr(
+        "exercise_log.parser.full_log_parse",
+        Mock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "exercise_log.parser.sets_reps_notes",
+        Mock(return_value={}),
+    )
 
 
 # ---------------------------------------------------------------------------
