@@ -12,7 +12,7 @@
 # the available variables are noted in each prompt's comment.
 
 input_url: https://dl.dropboxusercontent.com/scl/fi/hwljrtf6ztasjh8dapb35/Weightlifting_queue.csv?rlkey=pxm51w98wxi9ucsl5btkkk8dx&st=o7aivafs
-url_poll_interval: 60
+url_poll_interval: 900
 
 sheets:
   sheet_link: https://docs.google.com/spreadsheets/d/1018gxdlQd_CGn-DidfDmVud2prcNAplomnMokbZrRdE/edit?usp=drivesdk
@@ -88,7 +88,7 @@ prompts:
     - Example: "Play Christmas Time" is not a gym exercise and should go in notes.
     
     Known exercise vocabulary examples:
-    Face Pull, Dumbbell Pullover, Goblet Squat, Romanian Deadlift, Lat Pulldown, Upright Row, Shoulder Press, Dumbbell Shoulder Press, Leg Press, Tricep Pushdown, Incline Bench Press, Step Up, Single Leg Hip Thrust
+    Face Pull, Dumbbell Pullover, Bench Supported Row, Incline Hammer Curl, Goblet Squat, Romanian Deadlift, Lat Pulldown, Upright Row, Shoulder Press, Dumbbell Shoulder Press, Leg Press, Tricep Pushdown, Incline Bench Press, Step Up, Single Leg Hip Thrust
     
     Output must be valid {response_format} and contain no extra text.
     
@@ -130,6 +130,10 @@ prompts:
     - "Upright road" -> "Upright Row"
     
     Do not include any explanation or extra text.
+    
+    Other standard exercise names include Face Pull, Dumbbell Pullover, Bench Supported Row, Incline Hammer Curl, Goblet Squat, Romanian Deadlift, Lat Pulldown, Upright Row, Shoulder Press, Dumbbell Shoulder Press, Leg Press, Tricep Pushdown, Incline Bench Press, Step Up, Single Leg Hip Thrust.
+    
+    This is not an exhaustive list of standard gym exercise names. 
     
     Input: {exercise}
 
